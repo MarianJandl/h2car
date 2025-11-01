@@ -25,6 +25,10 @@ def generate_data():
     return f"Tim:{tim} Di:{hex(di)} Pwm:0 Vbat:{round(random.random() * 2 + 7, 2)} Iout:{round(random.random() * 20 + 50, 2)} Pout:{round((random.random() * 20 + 50)*(random.random() * 2 + 7)*0.1, 2)} Vfc:{round(random.random() * 2 + 7, 2)} Pfc:{round((random.random() * 20 + 50)*(random.random() * 2 + 7)*0.1, 2)} PfcDes:{round((random.random() * 20 + 50)*(random.random() * 2 + 7)*0.1, 2)} Tfc:{random.randint(40, 80)}"
 
 while True:
-    print(generate_data())
-    sys.stdout.flush()
-    time.sleep(1)
+    try:
+        print(generate_data())
+        sys.stdout.flush()
+        time.sleep(1)
+    except:
+        print("probably stopped ... or some error :)")
+        exit()

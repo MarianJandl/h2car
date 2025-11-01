@@ -2,6 +2,7 @@ import random
 import psutil
 from datetime import datetime
 import subprocess
+import time
 from textual.app import App, ComposeResult
 from textual.containers import Grid, Vertical, Container
 from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane
@@ -43,6 +44,61 @@ def get_data(data):
 # -----------------------------
 # Connection Manager Screen
 # -----------------------------
+
+class QuitScreen(ModalScreen):
+    """Screen with a dialog to quit."""
+
+    CSS = """
+        QuitScreen {
+        align: center middle;
+        }
+
+        #dialog {
+            grid-size: 2;
+            grid-gutter: 1 2;
+            grid-rows: 1fr 3;
+            padding: 0 1;
+            width: 60;
+            height: 11;
+            border: thick $background 80%;
+            background: $surface;
+        }
+
+        #question {
+            column-span: 2;
+            height: 1fr;
+            width: 1fr;
+            content-align: center middle;
+        }
+
+        Button {
+            width: 100%;
+        }   
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=True),
+    ]
+
+    def __init__(self):
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Label("Are you sure you want to quit?", id="question"),
+            Button("Quit", variant="error", id="quit"),
+            Button("Cancel", variant="default", id="cancel"),
+            id="dialog",
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "quit":
+            self.dismiss({
+                "result": True
+            })
+        elif event.button.id == "cancel":
+            self.dismiss(None)
+
 class ConnectionScreen(ModalScreen):
     CSS = """
     ConnectionScreen {
@@ -98,12 +154,12 @@ class ConnectionScreen(ModalScreen):
                 [
                     ("Simulated Data", "simulated"),
                     ("Serial Port", "serial"),
-                    ("Bluetooth", "bluetooth"),
+                    
                 ],
                 id="connection_type",
                 value="simulated"
             )
-            yield Label("Port/Address (for Serial/Bluetooth):")
+            yield Label("Port/Address (for Serial):")
             yield Input(placeholder="e.g., COM3, /dev/ttyUSB0, or BT address", id="port")
             yield Label("Baudrate (for Serial):")
             yield Select(
@@ -330,7 +386,8 @@ class DashboardLogApp(App):
     BINDINGS = [
         Binding("c", "open_connection", "Connection", show=True),
         Binding("d", "disconnect", "Disconnect", show=True),
-        Binding("q", "quit", "Quit", show=True),
+        Binding("q", "test_quit", "Quit", show=True),
+        Binding("ctrl+q", "test_quit", "Quit", show=True),
     ]
     
     def __init__(self):
@@ -338,11 +395,11 @@ class DashboardLogApp(App):
         self.is_connected = False
         self.connection_config = None
         self.update_timer = None
+        self.data_stream = None
     
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        
-        
+
         with TabbedContent():
             with TabPane("Dashboard & Log", id="tab_dashboard"):
                 with Grid(id="main_grid"):
@@ -363,13 +420,33 @@ class DashboardLogApp(App):
                     yield self.data_log
 
         yield Footer()
-    
+
+    def write_log(self, data):
+        # Function to write to log with line number and time
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        global lineno
+        lineno += 1
+        self.data_log.write(f"{lineno} {timestamp} | {data}")
+
+    def action_test_quit(self):
+        self.push_screen(QuitScreen(), self.actually_quit)
+        
+    def actually_quit(self, result):
+        self.write_log(result)
+        if result is None:
+            return
+        else:
+            self.action_disconnect()
+
+            if self.data_stream != None:
+                self.data_stream.terminate()
+            self.exit()
     def action_open_connection(self):
         """Open the connection settings dialog"""
         self.push_screen(ConnectionScreen(), self.handle_connection)
-    
+
     def action_disconnect(self):
-        """Disconnect from current data source"""
+        #Disconnect from current data source
         if self.is_connected:
             if self.update_timer:
                 self.update_timer.stop()
@@ -380,30 +457,28 @@ class DashboardLogApp(App):
             self.data_log.write("[yellow]Disconnected[/yellow]")
     
     def handle_connection(self, config):
-        """Handle the connection configuration from the dialog"""
+        #Handle the connection configuration from the dialog
         if config is None:
             return
         
         self.connection_config = config
         self.conn_status.update_status("Connecting")
         
-        # Here you would implement actual serial/bluetooth connection
-        # For now, we'll just simulate it
         conn_type = config.get("type")
         
         if conn_type == "simulated":
-            
-            
             self.data_stream = subprocess.Popen(["python", "data.py"], stdout=subprocess.PIPE, text=True)
             self.start_data_stream()
-        elif conn_type in ["serial", "bluetooth"]:
+
+        elif conn_type in ["serial"]:
             # TODO: Implement actual serial/bluetooth connection
             # For now, fall back to simulated
             self.data_log.write(f"[yellow]Real {conn_type} connection not implemented yet. Using simulated data.[/yellow]")
             self.start_data_stream()
     
     def start_data_stream(self):
-        """Start receiving data"""
+        #Start receiving data
+
         self.is_connected = True
         self.conn_status.update_status("Connected", self.connection_config)
         self.data_log.write("[green]Connected successfully[/green]")
@@ -413,13 +488,19 @@ class DashboardLogApp(App):
             self.update_timer.stop()
         self.update_timer = self.set_interval(1, self.update_data)
     
-    def update_data(self):
-        """Update dashboard with new data"""
+   
+
+    def update_data(self):    
+        #Update dashboard with new data
+
         if not self.is_connected:
             return
-        
+        data = None
         # Generate or read data based on connection type
-        data = self.data_stream.stdout.readline().strip()
+        try:
+            data = self.data_stream.stdout.readline().strip()
+        except:
+            self.write_log(f"No data")
         if not data:
             return
         parsed_data = get_data(data)
@@ -427,10 +508,11 @@ class DashboardLogApp(App):
         self.dashboard.update_data(parsed_data)
         self.stats.update_stats(parsed_data)
         
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        global lineno
-        lineno += 1
-        self.data_log.write(f"{lineno} {timestamp} | {data}")
+        self.write_log(f"{data}")
+        
+        
+
+    
 
 if __name__ == "__main__":
     DashboardLogApp().run()
