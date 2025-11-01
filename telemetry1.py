@@ -1,6 +1,7 @@
 import random
 import psutil
 from datetime import datetime
+import subprocess
 from textual.app import App, ComposeResult
 from textual.containers import Grid, Vertical, Container
 from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane
@@ -13,6 +14,7 @@ from textual.binding import Binding
 di = 0
 tim = 0
 lineno = 0
+
 
 def generate_data():
     global di, tim
@@ -390,6 +392,9 @@ class DashboardLogApp(App):
         conn_type = config.get("type")
         
         if conn_type == "simulated":
+            
+            
+            self.data_stream = subprocess.Popen(["python", "data.py"], stdout=subprocess.PIPE, text=True)
             self.start_data_stream()
         elif conn_type in ["serial", "bluetooth"]:
             # TODO: Implement actual serial/bluetooth connection
@@ -414,7 +419,9 @@ class DashboardLogApp(App):
             return
         
         # Generate or read data based on connection type
-        data = generate_data()
+        data = self.data_stream.stdout.readline().strip()
+        if not data:
+            return
         parsed_data = get_data(data)
         
         self.dashboard.update_data(parsed_data)
