@@ -3,9 +3,10 @@ import time
 import sys
 
 tim = 0
+di = 0
 def generate_data():
-    global tim
-    di = 0
+    global tim, di
+    
     tim += 1
     if random.randint(0, 4) == 3:
         a = random.randint(0, 25)

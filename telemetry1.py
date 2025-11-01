@@ -248,6 +248,37 @@ class ConnectionStatus(Static):
         else:
             self.update(f"[bold red]○ Disconnected[/bold red]")
 
+class ErrorStatus(Static):
+    def __init__(self):
+        super().__init__()
+        
+        self.update_status(None)
+    
+    def update_status(self, data):
+        
+        if data is None:
+            self.update("[dim]No data[/dim]")
+        else:
+            err_code = data['Di']
+            if err_code == "0x0" or err_code == "0":
+               self.update("[green]Error code: 0 - OK[/green]")
+               
+            elif err_code == "0x1" or err_code == "1":
+                self.update("[yellow]Error code: 1 - Vymen bombicku[/yellow]")
+            elif err_code == "0x3" or err_code == "3":
+                self.update("[red]Error code: 3 - Neco spatne se clankem[/red]")
+            elif err_code == "0x8" or err_code == "8":
+                self.update("[red]Error code: 8 - Vymen baterku[/red]")
+            elif err_code == "0x9" or err_code == "9":
+                self.update("[red]Error code: 9 - Vymen baterku a bombicku asi[/red]")
+            elif err_code == "0xb" or err_code == "b" or err_code == "B":
+                self.update("[red]Error code: B - Vsechno spatne[/red]")
+            else:
+                self.update(f"[bold red]Error code {err_code}: Unknown error - I suppose everything is completly fucked - Good luck[/bold red]")
+                            
+        
+        
+
 # -----------------------------
 # Dashboard Widget
 # -----------------------------
@@ -260,8 +291,8 @@ class Dashboard(Static):
         if data is None:
             self.update(
                 "[bold cyan]Dashboard[/bold cyan]\n\n"
-                "[dim]No data - not connected[/dim]\n"
-                "Error code: --\n"
+                #"[dim]No data[/dim]\n"
+                #"Error code: --\n"
                 "Napeti na baterce: -- V\n"
                 "Proud do menice motoru: -- A\n"
                 "Vykon menice motoru: -- W\n"
@@ -273,7 +304,7 @@ class Dashboard(Static):
         else:
             self.update(
                 "[bold cyan]Dashboard[/bold cyan]\n\n"
-                f"Error code: {data['Di']}\n"
+                #f"Error code: {data['Di']}\n"
                 f"Napeti na baterce: {data['Vbat']} V\n"
                 f"Proud do menice motoru: {data['Iout']} A\n"
                 f"Vykon menice motoru: {data['Pout']} W\n"
@@ -376,6 +407,14 @@ class DashboardLogApp(App):
         height: 2;
         
     }
+
+    ErrorStatus {
+        padding: 1;
+        margin-top: 1;
+        
+        border: solid gray;
+    }
+
     ResourceMonitor {
         padding: 1;
         height: 3;
@@ -386,8 +425,8 @@ class DashboardLogApp(App):
     BINDINGS = [
         Binding("c", "open_connection", "Connection", show=True),
         Binding("d", "disconnect", "Disconnect", show=True),
-        Binding("q", "test_quit", "Quit", show=True),
-        Binding("ctrl+q", "test_quit", "Quit", show=True),
+        Binding("q", "request_quit", "Quit", show=True),
+        Binding("ctrl+q", "request_quit", "Quit", show=True),
     ]
     
     def __init__(self):
@@ -409,6 +448,9 @@ class DashboardLogApp(App):
                         self.conn_status = ConnectionStatus()
                         yield self.conn_status
                         
+                        self.err_status = ErrorStatus()
+                        yield self.err_status
+
                         self.dashboard = Dashboard()
                         yield self.dashboard
 
@@ -428,7 +470,7 @@ class DashboardLogApp(App):
         lineno += 1
         self.data_log.write(f"{lineno} {timestamp} | {data}")
 
-    def action_test_quit(self):
+    def action_request_quit(self):
         self.push_screen(QuitScreen(), self.actually_quit)
         
     def actually_quit(self, result):
@@ -441,6 +483,7 @@ class DashboardLogApp(App):
             if self.data_stream != None:
                 self.data_stream.terminate()
             self.exit()
+
     def action_open_connection(self):
         """Open the connection settings dialog"""
         self.push_screen(ConnectionScreen(), self.handle_connection)
@@ -454,7 +497,8 @@ class DashboardLogApp(App):
             self.is_connected = False
             self.connection_config = None
             self.conn_status.update_status("Disconnected")
-            self.data_log.write("[yellow]Disconnected[/yellow]")
+            self.write_log("Disconnected")
+           
     
     def handle_connection(self, config):
         #Handle the connection configuration from the dialog
@@ -465,15 +509,15 @@ class DashboardLogApp(App):
         self.conn_status.update_status("Connecting")
         
         conn_type = config.get("type")
-        
+        conn_port= config.get("port")
+        conn_baudrate = config.get("baudrate")
         if conn_type == "simulated":
-            self.data_stream = subprocess.Popen(["python", "data.py"], stdout=subprocess.PIPE, text=True)
+            self.data_stream = subprocess.Popen(["python", "simulation_data.py"], stdout=subprocess.PIPE, text=True)
             self.start_data_stream()
 
-        elif conn_type in ["serial"]:
-            # TODO: Implement actual serial/bluetooth connection
-            # For now, fall back to simulated
-            self.data_log.write(f"[yellow]Real {conn_type} connection not implemented yet. Using simulated data.[/yellow]")
+        elif conn_type == "serial":
+            self.data_stream = subprocess.Popen(["python", "simulation_data.py"], stdout=subprocess.PIPE, text=True)
+            self.write_log(f"{conn_type} connection to {conn_port} @ {conn_baudrate} not implemented yet. Using simulated data as well.")
             self.start_data_stream()
     
     def start_data_stream(self):
@@ -481,15 +525,13 @@ class DashboardLogApp(App):
 
         self.is_connected = True
         self.conn_status.update_status("Connected", self.connection_config)
-        self.data_log.write("[green]Connected successfully[/green]")
+        self.write_log("Connected successfully")
         
         # Start the update timer
         if self.update_timer:
             self.update_timer.stop()
         self.update_timer = self.set_interval(1, self.update_data)
     
-   
-
     def update_data(self):    
         #Update dashboard with new data
 
@@ -507,12 +549,30 @@ class DashboardLogApp(App):
         
         self.dashboard.update_data(parsed_data)
         self.stats.update_stats(parsed_data)
+        self.err_status.update_status(parsed_data)
+        #self.update_css(parsed_data)
         
         self.write_log(f"{data}")
         
-        
-
-    
+    def update_css(self, data):
+        if data is None:
+            self.err_status.styles.border("solid", "gray")
+        else:
+            err_code = data['Di']
+            if err_code == "0x0" or err_code == "0":
+              self.err_status.styles.border("solid", "green")
+            elif err_code == "0x1" or err_code == "1":
+                self.err_status.styles.border("solid", "yellow")
+            elif err_code == "0x3" or err_code == "3":
+                self.err_status.styles.border("solid", "red")
+            elif err_code == "0x8" or err_code == "8":
+                self.err_status.styles.border("solid", "red")
+            elif err_code == "0x9" or err_code == "9":
+                self.err_status.styles.border("solid", "red")
+            elif err_code == "0xb" or err_code == "b" or err_code == "B":
+                self.err_status.styles.border("solid", "red")
+            else:
+                self.err_status.styles.border("solid", "red")
 
 if __name__ == "__main__":
     DashboardLogApp().run()
