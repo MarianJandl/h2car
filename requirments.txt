@@ -1,0 +1,5 @@
+serial
+psutil
+datetime
+textual
+textual-dev
