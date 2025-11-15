@@ -27,9 +27,9 @@ def generate_data():
 
 while True:
     try:
-        print(generate_data())
+        print("data:", generate_data())
         sys.stdout.flush()
         time.sleep(1)
     except:
-        print("probably stopped ... or some error :)")
+        print("info:probably stopped ... or some error :)")
         exit()

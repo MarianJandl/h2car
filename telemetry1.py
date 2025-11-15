@@ -2,7 +2,6 @@ import random
 import psutil
 from datetime import datetime
 import subprocess
-import time
 from textual.app import App, ComposeResult
 from textual.containers import Grid, Vertical, Container
 from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane
@@ -15,7 +14,7 @@ from textual.binding import Binding
 di = 0
 tim = 0
 lineno = 0
-
+nodata = 0
 
 def generate_data():
     global di, tim
@@ -112,6 +111,14 @@ class ConnectionScreen(ModalScreen):
         background: $surface;
         padding: 1 2;
     }
+
+    #serial_settings {
+        width:auto;
+        height: auto;
+        
+        background: $surface;
+        
+    }
     
     #connection_dialog Label {
         margin: 1 0;
@@ -134,6 +141,9 @@ class ConnectionScreen(ModalScreen):
     #button_container Button {
         margin: 0 1;
     }
+    .hidden {
+        display: none;
+    }
     """
     
     BINDINGS = [
@@ -154,32 +164,40 @@ class ConnectionScreen(ModalScreen):
                 [
                     ("Simulated Data", "simulated"),
                     ("Serial Port", "serial"),
-                    
+
                 ],
                 id="connection_type",
                 value="simulated"
             )
-            yield Label("Port/Address (for Serial):")
-            yield Input(placeholder="e.g., COM3, /dev/ttyUSB0, or BT address", id="port")
-            yield Label("Baudrate (for Serial):")
-            yield Select(
-                [
-                    ("9600", "9600"),
-                    ("19200", "19200"),
-                    ("38400", "38400"),
-                    ("57600", "57600"),
-                    ("115200", "115200"),
-                ],
-                id="baudrate",
-                value="9600"
-            )
+            # Add visibility: hidden by default
+            with Container(id="serial_settings", classes="hidden"):
+                yield Label("Port/Address (for Serial):")
+                yield Input(placeholder="e.g., COM3, /dev/ttyUSB0, or BT address", id="port")
+                yield Label("Baudrate (for Serial):")
+                yield Select(
+                    [
+                        ("9600", "9600"),
+                        ("19200", "19200"),
+                        ("38400", "38400"),
+                        ("57600", "57600"),
+                        ("115200", "115200"),
+                    ],
+                    id="baudrate",
+                    value="9600"
+                )
             with Container(id="button_container"):
                 yield Button("Connect", variant="primary", id="connect")
                 yield Button("Cancel", variant="default", id="cancel")
-    
+
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "connection_type":
             self.connection_type = event.value
+            # Show/hide serial settings based on selection
+            serial_container = self.query_one("#serial_settings")
+            if event.value == "serial":
+                serial_container.remove_class("hidden")
+            else:
+                serial_container.add_class("hidden")
         elif event.select.id == "baudrate":
             self.baudrate = event.value
     
@@ -205,7 +223,7 @@ class ResourceMonitor(Static):
     
     def update_resources(self):
         try:
-            cpu_percent = self.process.cpu_percent(interval=0.1)
+            cpu_percent = self.process.cpu_percent(interval=0.1)    
             memory_info = self.process.memory_info()
             memory_mb = memory_info.rss / 1024 / 1024
             
@@ -255,9 +273,9 @@ class ErrorStatus(Static):
         self.update_status(None)
     
     def update_status(self, data):
-        
+        global nodata
         if data is None:
-            self.update("[dim]No data[/dim]")
+            self.update(f"[dim]No data ({nodata})[/dim]")
         else:
             err_code = data['Di']
             if err_code == "0x0" or err_code == "0":
@@ -276,9 +294,6 @@ class ErrorStatus(Static):
             else:
                 self.update(f"[bold red]Error code {err_code}: Unknown error - I suppose everything is completly fucked - Good luck[/bold red]")
                             
-        
-        
-
 # -----------------------------
 # Dashboard Widget
 # -----------------------------
@@ -317,7 +332,7 @@ class Dashboard(Static):
 class StatsDashboard(Static):
     def __init__(self):
         super().__init__()
-        self.update_stats(None)
+        
         self.stats = {
             "Vbat": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
             "Iout": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
@@ -326,26 +341,42 @@ class StatsDashboard(Static):
             "Pfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
             "Tfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0}
         }
+        self.update_stats(None)
     
     def update_stats(self, data):
         if data == None:
-            self.update(
-                f"[bold cyan]Statistics[/bold cyan]\n\n"
-                f"Vbat: Min: -- V | "
-                f"Max: -- V | Avg: -- V\n"
-                f"Iout: Min: -- A | "
-                f"Max: -- A | Avg: -- A\n"
-                f"Pout: Min: -- W | "
-                f"Max: -- W | Avg: -- W\n"
-                f"Vfc:  Min: -- V | "
-                f"Max: -- V | Avg: -- V\n"
-                f"Pfc:  Min: -- W | "
-                f"Max: -- W | Avg: -- W\n"
-                f"Tfc:  Min: -- °C | "
-                f"Max: -- °C | Avg: -- °C\n"
-            
-            
-        )
+            if self.stats["Vbat"]["count"] == 0:
+                self.update(
+                    f"[bold cyan]Statistics[/bold cyan]\n\n"
+                    f"Vbat: Min: -- V | "
+                    f"Max: -- V | Avg: -- V\n"
+                    f"Iout: Min: -- A | "
+                    f"Max: -- A | Avg: -- A\n"
+                    f"Pout: Min: -- W | "
+                    f"Max: -- W | Avg: -- W\n"
+                    f"Vfc:  Min: -- V | "
+                    f"Max: -- V | Avg: -- V\n"
+                    f"Pfc:  Min: -- W | "
+                    f"Max: -- W | Avg: -- W\n"
+                    f"Tfc:  Min: -- °C | "
+                    f"Max: -- °C | Avg: -- °C\n"
+                )
+            else:
+                self.update(
+                    f"[bold cyan]Statistics[/bold cyan]\n\n"
+                    f"Vbat: Min: {self.stats['Vbat']['min']:.2f}V | "
+                    f"Max: {self.stats['Vbat']['max']:.2f}V | Avg: -- V\n"
+                    f"Iout: Min: {self.stats['Iout']['min']:.2f}A | "
+                    f"Max: {self.stats['Iout']['max']:.2f}A | Avg: -- A\n"
+                    f"Pout: Min: {self.stats['Tfc']['min']}W | "
+                    f"Max: {self.stats['Pout']['max']}W | Avg:-- W\n"
+                    f"Vfc:  Min: {self.stats['Vfc']['min']:.2f}V | "
+                    f"Max: {self.stats['Vfc']['max']:.2f}V | Avg: -- V\n"
+                    f"Pfc:  Min: {self.stats['Tfc']['min']}W | "
+                    f"Max: {self.stats['Pfc']['max']}W | Avg: -- W\n"
+                    f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
+                    f"Max: {self.stats['Tfc']['max']}°C | Avg: -- °C\n"
+                )
         else:
             numeric_keys = ["Vbat", "Iout", "Pout", "Vfc","Pfc", "Tfc"]
             for key in numeric_keys:
@@ -424,7 +455,7 @@ class DashboardLogApp(App):
     
     BINDINGS = [
         Binding("c", "open_connection", "Connection", show=True),
-        Binding("d", "disconnect", "Disconnect", show=True),
+        Binding("ctrl+d", "disconnect", "Disconnect", show=True),
         Binding("q", "request_quit", "Quit", show=True),
         Binding("ctrl+q", "request_quit", "Quit", show=True),
     ]
@@ -486,11 +517,14 @@ class DashboardLogApp(App):
 
     def action_open_connection(self):
         """Open the connection settings dialog"""
+        if self.is_connected:
+            self.write_log("Already connected. Disconnect first to change connection.")
+            return
         self.push_screen(ConnectionScreen(), self.handle_connection)
 
     def action_disconnect(self):
         #Disconnect from current data source
-        if self.is_connected:
+        if self.is_connected: 
             if self.update_timer:
                 self.update_timer.stop()
                 self.update_timer = None
@@ -498,6 +532,7 @@ class DashboardLogApp(App):
             self.connection_config = None
             self.conn_status.update_status("Disconnected")
             self.write_log("Disconnected")
+            self.update_data()
            
     
     def handle_connection(self, config):
@@ -516,16 +551,21 @@ class DashboardLogApp(App):
             self.start_data_stream()
 
         elif conn_type == "serial":
-            self.data_stream = subprocess.Popen(["python", "simulation_data.py"], stdout=subprocess.PIPE, text=True)
-            self.write_log(f"{conn_type} connection to {conn_port} @ {conn_baudrate} not implemented yet. Using simulated data as well.")
+            self.data_stream = subprocess.Popen(["python", "serialcom.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)
+            self.write_log(f"{conn_type} connection to {conn_port} @ {conn_baudrate} ")
             self.start_data_stream()
+        
+
     
     def start_data_stream(self):
         #Start receiving data
 
         self.is_connected = True
         self.conn_status.update_status("Connected", self.connection_config)
-        self.write_log("Connected successfully")
+        if self.connection_config.get("type") == "simulated":
+            self.write_log("Connected successfully to stdout of simulation_data.py script")
+        elif self.connection_config.get("type") == "serial":
+            self.write_log("Connected successfully to stdout of serialcom.py script")
         
         # Start the update timer
         if self.update_timer:
@@ -536,23 +576,40 @@ class DashboardLogApp(App):
         #Update dashboard with new data
 
         if not self.is_connected:
+            data = None
+            self.dashboard.update_data(None)
+            self.stats.update_stats(None)
+            self.err_status.update_status(None)
             return
+            
         data = None
+        parsed_data = None
+        global nodata
         # Generate or read data based on connection type
         try:
             data = self.data_stream.stdout.readline().strip()
         except:
             self.write_log(f"No data")
         if not data:
+            nodata += 1
+            self.err_status.update_status(None)
             return
-        parsed_data = get_data(data)
         
-        self.dashboard.update_data(parsed_data)
-        self.stats.update_stats(parsed_data)
-        self.err_status.update_status(parsed_data)
+        data_type = data.split(":", 1)
+        
+        if data_type[0] == "data":
+            parsed_data = get_data(data_type[1])
+            self.write_log(f"{data_type[1]}")
+            self.dashboard.update_data(parsed_data)
+            self.stats.update_stats(parsed_data)
+            self.err_status.update_status(parsed_data)
         #self.update_css(parsed_data)
-        
-        self.write_log(f"{data}")
+        elif data_type[0] == "info":
+            self.write_log(f"{data_type[1]}")
+            return
+        else:
+            self.write_log(f"Data in wrong format: {data}")
+            return
         
     def update_css(self, data):
         if data is None:
