@@ -3,7 +3,7 @@ import sys
 
 print("info:Starting serial communication...")
 print("info:port: ", sys.agrv[1], "baudrate: ",sys.argv[2])
-# Open serial port (adjust baudrate to match your device)
+
 ser = serial.Serial(str(sys.argv[1]), int(sys.argv[2]), timeout=1)
 
 print(f"info:Connected to: {ser.name}")
