@@ -1,7 +1,6 @@
 # Telemetry app 
 ## To do: 
-
-- Log 
+- Better documentation
 ## How to use this app
 
 - Clone this repository:
