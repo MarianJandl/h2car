@@ -3,7 +3,7 @@ from datetime import datetime
 import subprocess
 from textual.app import App, ComposeResult
 from textual.containers import Grid, Vertical, Container
-from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane, MarkdownViewer, DirectoryTree
+from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane, MarkdownViewer, DirectoryTree, ProgressBar
 from textual.screen import ModalScreen
 from textual.binding import Binding
 import os
@@ -12,6 +12,7 @@ from typing import Iterable
 import threading
 from queue import Queue
 import time
+import json
 
 di = 0
 tim = 0
@@ -21,6 +22,267 @@ nodata = 0
 def get_data(data):
     data = dict(p.split(":") for p in data.split())
     return data
+
+def load_race_config():
+    """Load race configuration from file"""
+    config_path = Path("race_config.json")
+    default_config = {
+        "race_duration_seconds": 3600,
+        "hydrogen_stick_count": 4,
+        "battery_count": 2,
+        "race_name": "Hydrogen Race",
+        "enable_alerts": True,
+        "alert_threshold_percent": 10
+    }
+    
+    if config_path.exists():
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return {**default_config, **config}
+        except Exception:
+            pass
+    
+    with open(config_path, 'w') as f:
+        json.dump(default_config, f, indent=2)
+    
+    return default_config
+
+class RaceTracker(Static):
+    """Widget to track race progress and component changes"""
+    
+    def __init__(self):
+        super().__init__()
+        self.config = load_race_config()
+        self.race_start_time = None
+        self.is_racing = False
+        self.elapsed_time = 0
+        self.stick_changes = 0
+        self.battery_changes = 0
+        
+        # Track when last changes occurred
+        self.last_stick_change_time = 0
+        self.last_battery_change_time = 0
+        
+        # Initial intervals
+        self.stick_interval = self.config["race_duration_seconds"] / self.config["hydrogen_stick_count"]
+        self.battery_interval = self.config["race_duration_seconds"] / self.config["battery_count"]
+        
+        # Current expected intervals (recalculated after each change)
+        self.current_stick_interval = self.stick_interval
+        self.current_battery_interval = self.battery_interval
+    
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(id="race_info")
+            yield Static("[bold]Hydrogen Stick Progress:[/bold]", id="stick_label")
+            yield ProgressBar(total=100, show_eta=False, id="stick_progress")
+            yield Static(id="stick_info")
+            yield Static("[bold]Battery Progress:[/bold]", id="battery_label")
+            yield ProgressBar(total=100, show_eta=False, id="battery_progress")
+            yield Static(id="battery_info")
+    
+    def on_mount(self):
+        self.update_display()
+    
+    def start_race(self):
+        self.race_start_time = time.time()
+        self.is_racing = True
+        self.elapsed_time = 0
+        self.stick_changes = 0
+        self.battery_changes = 0
+        self.last_stick_change_time = 0
+        self.last_battery_change_time = 0
+        self.current_stick_interval = self.stick_interval
+        self.current_battery_interval = self.battery_interval
+    
+    def stop_race(self):
+        self.is_racing = False
+    
+    def reset_race(self):
+        self.race_start_time = None
+        self.is_racing = False
+        self.elapsed_time = 0
+        self.stick_changes = 0
+        self.battery_changes = 0
+        self.last_stick_change_time = 0
+        self.last_battery_change_time = 0
+        self.current_stick_interval = self.stick_interval
+        self.current_battery_interval = self.battery_interval
+        self.update_display()
+    
+    def log_stick_change(self):
+        if not self.is_racing:
+            return
+        
+        self.stick_changes += 1
+        self.last_stick_change_time = self.elapsed_time
+        
+        # Recalculate interval: distribute remaining time evenly among remaining sticks
+        sticks_remaining = self.config["hydrogen_stick_count"] - self.stick_changes
+        if sticks_remaining > 0:
+            time_remaining = self.config["race_duration_seconds"] - self.elapsed_time
+            self.current_stick_interval = time_remaining / sticks_remaining
+        
+        self.update_display()
+    
+    def log_battery_change(self):
+        if not self.is_racing:
+            return
+        
+        self.battery_changes += 1
+        self.last_battery_change_time = self.elapsed_time
+        
+        # Recalculate interval: distribute remaining time evenly among remaining batteries
+        batteries_remaining = self.config["battery_count"] - self.battery_changes
+        if batteries_remaining > 0:
+            time_remaining = self.config["race_duration_seconds"] - self.elapsed_time
+            self.current_battery_interval = time_remaining / batteries_remaining
+        
+        self.update_display()
+    
+    def update_timer(self):
+        if self.is_racing and self.race_start_time:
+            self.elapsed_time = time.time() - self.race_start_time
+            self.update_display()
+    
+    def format_time(self, seconds):
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    
+    def update_display(self):
+        race_duration = self.config["race_duration_seconds"]
+        
+        if self.is_racing:
+            race_progress = min((self.elapsed_time / race_duration) * 100, 100)
+            time_remaining = max(race_duration - self.elapsed_time, 0)
+            
+            # Calculate time since last change
+            time_since_stick = self.elapsed_time - self.last_stick_change_time
+            time_since_battery = self.elapsed_time - self.last_battery_change_time
+            
+            # Calculate remaining percentage (100% = just changed, 0% = time to change)
+            stick_remaining_percent = max(0, 100 - (time_since_stick / self.current_stick_interval) * 100)
+            battery_remaining_percent = max(0, 100 - (time_since_battery / self.current_battery_interval) * 100)
+            
+            # Calculate time left until expected change
+            stick_time_left = max(0, self.current_stick_interval - time_since_stick)
+            battery_time_left = max(0, self.current_battery_interval - time_since_battery)
+            
+            # Calculate efficiency (how much longer than expected)
+            stick_over_percent = 0
+            battery_over_percent = 0
+            
+            if time_since_stick > self.current_stick_interval:
+                stick_over_percent = ((time_since_stick - self.current_stick_interval) / self.current_stick_interval) * 100
+            
+            if time_since_battery > self.current_battery_interval:
+                battery_over_percent = ((time_since_battery - self.current_battery_interval) / self.current_battery_interval) * 100
+            
+            sticks_remaining = self.config["hydrogen_stick_count"] - self.stick_changes
+            batteries_remaining = self.config["battery_count"] - self.battery_changes
+            
+            status = "[green]● RACING[/green]"
+            
+            # Update progress bars
+            stick_bar = self.query_one("#stick_progress", ProgressBar)
+            battery_bar = self.query_one("#battery_progress", ProgressBar)
+            
+            # Set progress and colors
+            stick_bar.update(progress=stick_remaining_percent)
+            if stick_over_percent > 0:
+                stick_bar.styles.color = "green"
+            elif stick_remaining_percent < 10:
+                stick_bar.styles.color = "red"
+            elif stick_remaining_percent < 25:
+                stick_bar.styles.color = "yellow"
+            else:
+                stick_bar.styles.color = "green"
+            
+            battery_bar.update(progress=battery_remaining_percent)
+            if battery_over_percent > 0:
+                battery_bar.styles.color = "green"
+            elif battery_remaining_percent < 10:
+                battery_bar.styles.color = "red"
+            elif battery_remaining_percent < 25:
+                battery_bar.styles.color = "yellow"
+            else:
+                battery_bar.styles.color = "green"
+            
+            # Build status display
+            stick_status = ""
+            if stick_over_percent > 0:
+                stick_status = f" [green]↑ {stick_over_percent:.1f}% over expected! (BONUS)[/green]"
+            elif stick_remaining_percent < 10:
+                stick_status = " [bold red]⚠ CHANGE NOW![/bold red]"
+            elif stick_remaining_percent < 25:
+                stick_status = " [yellow]⚠ Change soon[/yellow]"
+            
+            battery_status = ""
+            if battery_over_percent > 0:
+                battery_status = f" [green]↑ {battery_over_percent:.1f}% over expected! (BONUS)[/green]"
+            elif battery_remaining_percent < 10:
+                battery_status = " [bold red]⚠ CHANGE NOW![/bold red]"
+            elif battery_remaining_percent < 25:
+                battery_status = " [yellow]⚠ Change soon[/yellow]"
+            
+            # Update text displays
+            race_info = self.query_one("#race_info", Static)
+            race_info.update(f"""[bold cyan]Race Tracker[/bold cyan] {status}
+
+Race: {self.config['race_name']}
+Time: {self.format_time(self.elapsed_time)} / {self.format_time(race_duration)}
+Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
+""")
+            
+            stick_label = self.query_one("#stick_label", Static)
+            stick_label.update(f"[bold]Hydrogen Stick:[/bold] {self.stick_changes}/{self.config['hydrogen_stick_count']} changes ({sticks_remaining} remaining)")
+            
+            stick_info = self.query_one("#stick_info", Static)
+            if stick_time_left > 0:
+                stick_info.update(f"Time left to expected change: {self.format_time(stick_time_left)} ({stick_remaining_percent:.1f}% remaining){stick_status}")
+            else:
+                stick_info.update(f"Time in use: {self.format_time(time_since_stick)} (Expected: {self.format_time(self.current_stick_interval)}){stick_status}")
+            
+            battery_label = self.query_one("#battery_label", Static)
+            battery_label.update(f"[bold]Battery:[/bold] {self.battery_changes}/{self.config['battery_count']} changes ({batteries_remaining} remaining)")
+            
+            battery_info = self.query_one("#battery_info", Static)
+            if battery_time_left > 0:
+                battery_info.update(f"Time left to expected change: {self.format_time(battery_time_left)} ({battery_remaining_percent:.1f}% remaining){battery_status}")
+            else:
+                battery_info.update(f"Time in use: {self.format_time(time_since_battery)} (Expected: {self.format_time(self.current_battery_interval)}){battery_status}")
+            
+        else:
+            race_info = self.query_one("#race_info", Static)
+            race_info.update(f"""[bold cyan]Race Tracker[/bold cyan] [dim]○ Not Started[/dim]
+
+Race: {self.config['race_name']}
+Duration: {self.format_time(race_duration)}
+Hydrogen sticks: {self.config['hydrogen_stick_count']} (change every {self.format_time(self.stick_interval)})
+Batteries: {self.config['battery_count']} (change every {self.format_time(self.battery_interval)})
+
+Press [bold]R[/bold] to start race | Press [bold]Shift+R[/bold] to reset
+""")
+            
+            stick_label = self.query_one("#stick_label", Static)
+            stick_label.update("[bold]Hydrogen Stick Progress:[/bold]")
+            
+            battery_label = self.query_one("#battery_label", Static)
+            battery_label.update("[bold]Battery Progress:[/bold]")
+            
+            stick_info = self.query_one("#stick_info", Static)
+            stick_info.update("Not started")
+            
+            battery_info = self.query_one("#battery_info", Static)
+            battery_info.update("Not started")
+            
+            stick_bar = self.query_one("#stick_progress", ProgressBar)
+            battery_bar = self.query_one("#battery_progress", ProgressBar)
+            stick_bar.update(progress=100)
+            battery_bar.update(progress=100)
 
 class QuitScreen(ModalScreen):
     """Screen with a dialog to quit."""
@@ -403,11 +665,11 @@ class DashboardLogApp(App):
         
         }
         Dashboard {
-            padding: 1;
+            padding: 1 1 0 1;
         }
         StatsDashboard {
-            padding: 1;
-            margin-top: 1;
+            padding: 1 1 0 1;
+            
         }
         RichLog {
             padding: 1;
@@ -420,7 +682,7 @@ class DashboardLogApp(App):
 
         ErrorStatus {
             padding: 1;
-            margin-top: 1;
+            
             
             border: solid gray;
         }
@@ -440,6 +702,11 @@ class DashboardLogApp(App):
             height: 100%;
             border: solid $primary;
         }
+        RaceTracker {
+            padding: 1 1 0 1;
+            
+            
+        }
         """
     
     BINDINGS = [
@@ -447,6 +714,10 @@ class DashboardLogApp(App):
         Binding("ctrl+d", "disconnect", "Disconnect", show=True),
         Binding("q", "request_quit", "Quit", show=True),
         Binding("ctrl+q", "request_quit", "Quit", show=True),
+        Binding("r", "start_race", "Start Race", show=True),
+        Binding("ctrl+r", "reset_race", "Reset Race", show=True),
+        Binding("ctrl+s", "log_stick", "Log Stick", show=True),
+        Binding("ctrl+b", "log_battery", "Log Battery", show=True),
     ]
     
     def __init__(self):
@@ -458,6 +729,7 @@ class DashboardLogApp(App):
         self.queue = Queue()
         self.read_thread = None
         self.stop_event = None
+        self.race_timer = None
     
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -479,6 +751,9 @@ class DashboardLogApp(App):
 
                         self.stats = StatsDashboard()
                         yield self.stats
+                        self.race_tracker = RaceTracker()
+                        yield self.race_tracker
+
                         self.resource_monitor = ResourceMonitor()
                         yield self.resource_monitor
                     self.data_log = RichLog(highlight=False, markup=True)
@@ -686,6 +961,34 @@ class DashboardLogApp(App):
                 self.err_status.styles.border("solid", "red")
             else:
                 self.err_status.styles.border("solid", "red")
-
+    def action_start_race(self):
+        if not self.race_tracker.is_racing:
+            self.race_tracker.start_race()
+            self.write_log("Race started")
+            if self.race_timer:
+                self.race_timer.stop()
+            self.race_timer = self.set_interval(0.1, self.update_race)
+        else:
+            self.race_tracker.stop_race()
+            self.write_log("Race paused")
+            if self.race_timer:
+                self.race_timer.stop()
+    
+    def action_reset_race(self):
+        self.race_tracker.reset_race()
+        self.write_log("Race reset")
+        if self.race_timer:
+            self.race_timer.stop()
+    
+    def action_log_stick(self):
+        self.race_tracker.log_stick_change()
+        self.write_log("Hydrogen stick changed")
+    
+    def action_log_battery(self):
+        self.race_tracker.log_battery_change()
+        self.write_log("Battery changed")
+    
+    def update_race(self):
+        self.race_tracker.update_timer()
 if __name__ == "__main__":
     DashboardLogApp().run()
