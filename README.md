@@ -26,6 +26,7 @@ python telemetry1.py
 - Real-time dashboard with all important data
 - Statistics dashboard with min/max/avg measured values
 - Real-time log
+- Saving the log to the file in logs/ folder
 - Error status with suggested solution
 - Variety of color themes
 
