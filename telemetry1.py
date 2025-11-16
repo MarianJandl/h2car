@@ -1,4 +1,3 @@
-import random
 import psutil
 from datetime import datetime
 import subprocess
@@ -464,7 +463,8 @@ class DashboardLogApp(App):
         timestamp = datetime.now().strftime("%H:%M:%S")
         global lineno
         lineno += 1
-        self.data_log.write(f"{lineno} {timestamp} | {data}")
+        ln = str(lineno).zfill(5)
+        self.data_log.write(f"{ln} {timestamp} | {data}")
 
     def action_request_quit(self):
         self.push_screen(QuitScreen(), self.actually_quit)
@@ -560,11 +560,13 @@ class DashboardLogApp(App):
             self.err_status.update_status(None)
             return
         
+        nodata = 0
+
         data_type = data.split(":", 1)
         
         if data_type[0] == "data":
             parsed_data = get_data(data_type[1])
-            self.write_log(f"{data_type[1]}")
+            self.write_log(f"{data_type[1].strip()}")
             self.dashboard.update_data(parsed_data)
             self.stats.update_stats(parsed_data)
             self.err_status.update_status(parsed_data)

@@ -1,6 +1,8 @@
 import random
 import time
 import sys
+import os
+import datetime
 
 tim = 0
 di = 0
@@ -25,11 +27,27 @@ def generate_data():
     
     return f"Tim:{tim} Di:{hex(di)} Pwm:0 Vbat:{round(random.random() * 2 + 7, 2)} Iout:{round(random.random() * 20 + 50, 2)} Pout:{round((random.random() * 20 + 50)*(random.random() * 2 + 7)*0.1, 2)} Vfc:{round(random.random() * 2 + 7, 2)} Pfc:{round((random.random() * 20 + 50)*(random.random() * 2 + 7)*0.1, 2)} PfcDes:{round((random.random() * 20 + 50)*(random.random() * 2 + 7)*0.1, 2)} Tfc:{random.randint(40, 80)}"
 
+if not os.path.exists("logs"):
+    os.mkdir("logs")
+
+x = datetime.datetime.now().strftime("%Y%m%d")
+k = 0
+
+
+while os.path.exists(f"logs/simrawdatalog{x}_{k}.txt"):
+    k += 1
+with open(f"logs/simrawdatalog{x}_{k}.txt", "a") as f:
+    f.write(f"--- New session started at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+
 while True:
     try:
-        print("data:", generate_data())
+        data = generate_data()
+        print("data:", data)
+        with open(f"logs/simrawdatalog{x}_{k}.txt", "a") as f:
+            f.write(data + "\n")
         sys.stdout.flush()
         time.sleep(1)
-    except:
+    except Exception as e:
         print("info:probably stopped ... or some error :)")
+        print(e)
         exit()
