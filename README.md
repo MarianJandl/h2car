@@ -1,6 +1,8 @@
 # Telemetry app 
 ## To do: 
 - Better documentation
+- Improve race tracker calculation and connect it to incoming data
+
 ## How to use this app
 
 - Clone this repository:
@@ -22,21 +24,32 @@ python telemetry1feature.py
 to test newest features
 
 ### Current newest feature:
-- Docs tab to view documentation files from docs/ directory
+- Race tracker
 
 ### Key bindings
+#### Connection control
 - To connect to a device press `c` and choose between simulation data for debugging or serial option where you specify the port and baudrate of the device.
 - To disconnect from data stream press `ctrl+d`.
+
+#### General app control
 - To quit the app press `ctrl+q` and confirm in dialog window.
 - To open textual palette press `ctrl+p`.
 
+#### Race Tracker control
+- To start/stop press `r`
+- To reset press `ctrl+r`
+- To log hydrostick change press `ctrl+s`
+- To log battery change press `ctrl+b`
 
 ## Features
 
 - Real-time dashboard with all important data
 - Statistics dashboard with min/max/avg measured values
+- Race tracker with estimated times to change hydrostick/battery
+- Race tracker configuration file
 - Real-time log
 - Saving the log to the file in logs/ folder
+- Docs tab to view documentation files from docs/ directory
 - Error status with suggested solution
 - Variety of color themes
 
