@@ -1,0 +1,8 @@
+{
+  "race_duration_seconds": 100,
+  "hydrogen_stick_count": 4,
+  "battery_count": 2,
+  "race_name": "Hydrogen Race",
+  "enable_alerts": true,
+  "alert_threshold_percent": 10
+}
