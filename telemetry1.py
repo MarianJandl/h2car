@@ -9,6 +9,9 @@ from textual.binding import Binding
 import os
 from pathlib import Path
 from typing import Iterable
+import threading
+from queue import Queue
+import time
 
 di = 0
 tim = 0
@@ -389,55 +392,55 @@ class FilteredDirectoryTree(DirectoryTree):
 
 class DashboardLogApp(App):
     CSS = """
-    #main_grid {
-        grid-size: 2 1;
-        grid-columns: 4fr 6fr;
-       
-    }
-    #docs_grid {
-        grid-size: 2 1;
-        grid-columns: 3fr 7fr;
-       
-    }
-    Dashboard {
-        padding: 1;
-    }
-    StatsDashboard {
-        padding: 1;
-        margin-top: 1;
-    }
-    RichLog {
-        padding: 1;
-    }
-    ConnectionStatus {
-        padding: 1 1 0 1;
-        height: 2;
+        #main_grid {
+            grid-size: 2 1;
+            grid-columns: 4fr 6fr;
         
-    }
-
-    ErrorStatus {
-        padding: 1;
-        margin-top: 1;
+        }
+        #docs_grid {
+            grid-size: 2 1;
+            grid-columns: 3fr 7fr;
         
-        border: solid gray;
-    }
+        }
+        Dashboard {
+            padding: 1;
+        }
+        StatsDashboard {
+            padding: 1;
+            margin-top: 1;
+        }
+        RichLog {
+            padding: 1;
+        }
+        ConnectionStatus {
+            padding: 1 1 0 1;
+            height: 2;
+            
+        }
 
-    ResourceMonitor {
-        padding: 1;
-        height: 3;
-        dock: bottom;
-    }
-    
-    DirectoryTree {
-        height: 100%;
-        border: solid $primary;
-    }
-    
-    MarkdownViewer {
-        height: 100%;
-        border: solid $primary;
-    }
-    """
+        ErrorStatus {
+            padding: 1;
+            margin-top: 1;
+            
+            border: solid gray;
+        }
+
+        ResourceMonitor {
+            padding: 1;
+            height: 3;
+            dock: bottom;
+        }
+        
+        DirectoryTree {
+            height: 100%;
+            border: solid $primary;
+        }
+        
+        MarkdownViewer {
+            height: 100%;
+            border: solid $primary;
+        }
+        """
     
     BINDINGS = [
         Binding("c", "open_connection", "Connection", show=True),
@@ -452,6 +455,9 @@ class DashboardLogApp(App):
         self.connection_config = None
         self.update_timer = None
         self.data_stream = None
+        self.queue = Queue()
+        self.read_thread = None
+        self.stop_event = None
     
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -489,8 +495,6 @@ class DashboardLogApp(App):
 
         yield Footer()
 
-    
-
     def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
         """Called when a file is selected in the directory tree."""
         file_path = str(event.path)
@@ -510,6 +514,15 @@ class DashboardLogApp(App):
         else:
             self.markdown_viewer.document.update(f"# Unsupported File\n\nThe file `{os.path.basename(file_path)}` is not a markdown file.")
             #self.write_log(f"Selected non-markdown file: {os.path.basename(file_path)}")
+
+    def reader_thread(self, stream, q, stop_event):
+   
+        while not stop_event.is_set():
+            line = stream.readline()
+            if line:
+                q.put(line.strip())
+            else:
+                time.sleep(0.05)     
 
     def write_log(self, data):
         # Function to write to log with line number and time
@@ -546,12 +559,24 @@ class DashboardLogApp(App):
             if self.update_timer:
                 self.update_timer.stop()
                 self.update_timer = None
-            self.is_connected = False
+            
             self.connection_config = None
             self.conn_status.update_status("Disconnected")
-            self.write_log("Disconnected")
+            self.is_connected = False
             self.update_data()
-           
+            self.write_log("Disconnected")
+            
+            self.stop_event.set()
+            if self.read_thread.is_alive():
+                self.read_thread.join(timeout=1)
+
+            if self.data_stream:
+                self.data_stream.kill()
+                self.data_stream = None
+            while not self.queue.empty():
+                self.queue.get()
+            self.stop_event.clear()
+            #self.update_data()
     
     def handle_connection(self, config):
         #Handle the connection configuration from the dialog
@@ -585,6 +610,10 @@ class DashboardLogApp(App):
         elif self.connection_config.get("type") == "serial":
             self.write_log("Connected successfully to stdout of serialcom.py script")
         
+        self.stop_event = threading.Event()
+        self.read_thread = threading.Thread(target=self.reader_thread, args=(self.data_stream.stdout, self.queue, self.stop_event), daemon=True)
+        self.read_thread.start()
+        
         # Start the update timer
         if self.update_timer:
             self.update_timer.stop()
@@ -592,7 +621,8 @@ class DashboardLogApp(App):
     
     def update_data(self):    
         #Update dashboard with new data
-
+        #self.write_log("reading update")
+        
         if not self.is_connected:
             data = None
             self.dashboard.update_data(None)
@@ -604,33 +634,39 @@ class DashboardLogApp(App):
         parsed_data = None
         global nodata
         # Generate or read data based on connection type
-        try:
-            data = self.data_stream.stdout.readline().strip()
-        except:
-            self.write_log(f"No data")
-        if not data:
-            nodata += 1
-            self.err_status.update_status(None)
-            return
-        
-        nodata = 0
+   
+        while not self.queue.empty():
+            
+            data = self.queue.get()
+                       
+            if not data:
+                nodata += 1
+                self.err_status.update_status(None)
+                return
+            
 
-        data_type = data.split(":", 1)
-        
-        if data_type[0] == "data":
-            parsed_data = get_data(data_type[1])
-            self.write_log(f"{data_type[1].strip()}")
-            self.dashboard.update_data(parsed_data)
-            self.stats.update_stats(parsed_data)
-            self.err_status.update_status(parsed_data)
-        #self.update_css(parsed_data)
-        elif data_type[0] == "info":
-            self.write_log(f"{data_type[1].strip()}")
-            return
-        else:
-            self.write_log(f"Data in wrong format: {data}")
-            return
-        
+            nodata = 0
+
+            data_type = data.split(":", 1)
+            
+            if data_type[0] == "data":
+                parsed_data = get_data(data_type[1])
+                self.write_log(f"{data_type[1].strip()}")
+                self.dashboard.update_data(parsed_data)
+                self.stats.update_stats(parsed_data)
+                self.err_status.update_status(parsed_data)
+            #self.update_css(parsed_data)
+            elif data_type[0] == "info":
+                self.write_log(f"{data_type[1].strip()}")
+                return
+            else:
+                self.write_log(f"Data in wrong format: {data}")
+                return
+        data_stream_status = self.data_stream.poll()
+        if data_stream_status is not None:
+            self.write_log(f"Data stream status: {data_stream_status}")
+            self.action_disconnect()
+            
     def update_css(self, data):
         if data is None:
             self.err_status.styles.border("solid", "gray")
