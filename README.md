@@ -16,11 +16,21 @@ pip install -r requirments.txt
 ```
 python telemetry1.py
 ```
+    or
+```
+python telemetry1feature.py
+```
+    to test newest features
+
+Current newest feature:
+- Docs tab to view documentation files from docs/ directory
 
 - To connect to a device press `c` and choose between simulation data for debugging or serial option where you specify the port and baudrate of the device.
 - To disconnect from data stream press `ctrl+d`.
 - To quit the app press `ctrl+q` and confirm in dialog window.
 - To open textual palette press `ctrl+p`.
+
+
 ## Features
 
 - Real-time dashboard with all important data
