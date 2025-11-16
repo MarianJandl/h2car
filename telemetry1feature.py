@@ -3,9 +3,10 @@ from datetime import datetime
 import subprocess
 from textual.app import App, ComposeResult
 from textual.containers import Grid, Vertical, Container
-from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane
+from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane, MarkdownViewer, DirectoryTree
 from textual.screen import ModalScreen
 from textual.binding import Binding
+import os
 
 
 di = 0
@@ -388,6 +389,11 @@ class DashboardLogApp(App):
         grid-columns: 4fr 6fr;
        
     }
+    #docs_grid {
+        grid-size: 2 1;
+        grid-columns: 3fr 7fr;
+       
+    }
     Dashboard {
         padding: 1;
     }
@@ -415,6 +421,16 @@ class DashboardLogApp(App):
         padding: 1;
         height: 3;
         dock: bottom;
+    }
+    
+    DirectoryTree {
+        height: 100%;
+        border: solid $primary;
+    }
+    
+    MarkdownViewer {
+        height: 100%;
+        border: solid $primary;
     }
     """
     
@@ -456,8 +472,36 @@ class DashboardLogApp(App):
                         yield self.resource_monitor
                     self.data_log = RichLog(highlight=False, markup=True)
                     yield self.data_log
+            with TabPane("Docs", id="tab_docs"):
+                with Grid(id="docs_grid"):
+                    self.directory_tree = DirectoryTree("./docs")
+                    yield self.directory_tree
+
+                    self.markdown_viewer = MarkdownViewer("# Documentation\n\nSelect a markdown file from the directory tree to view it here.", show_table_of_contents=True)
+                    self.markdown_viewer.code_indent_guides = False
+                    yield self.markdown_viewer
 
         yield Footer()
+
+    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+        """Called when a file is selected in the directory tree."""
+        file_path = str(event.path)
+        
+        # Check if it's a markdown file
+        if file_path.endswith('.md'):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    # Update the markdown viewer with new content
+                    self.markdown_viewer.document.update(content)
+                    #self.write_log(f"Loaded documentation: {os.path.basename(file_path)}")
+            except Exception as e:
+                error_msg = f"# Error\n\nCould not load file: {file_path}\n\nError: {str(e)}"
+                self.markdown_viewer.document.update(error_msg)
+                #self.write_log(f"Error loading file: {str(e)}")
+        else:
+            self.markdown_viewer.document.update(f"# Unsupported File\n\nThe file `{os.path.basename(file_path)}` is not a markdown file.")
+            #self.write_log(f"Selected non-markdown file: {os.path.basename(file_path)}")
 
     def write_log(self, data):
         # Function to write to log with line number and time
