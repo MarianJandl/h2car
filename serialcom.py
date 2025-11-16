@@ -30,6 +30,8 @@ while os.path.exists(f"./logs/rawdatalog{x}_{k}.txt"):
 with open(f"./logs/rawdatalog{x}_{k}.txt", "a") as f:
     f.write(f"--- New session started at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
 
+print("info:Created log file:", f"rawdatalog{x}_{k}.txt")
+
 try:
     while True:
         if ser.in_waiting > 0:
