@@ -1,0 +1,44 @@
+{
+    "error_codes": [
+      {
+        "code": ["0x0", "0"],
+        "priority": "info",
+        "message": "OK - System operational"
+      },
+      {
+        "code": ["0x1", "1"],
+        "priority": "warning",
+        "message": "Replace hydrogen stick soon"
+      },
+      {
+        "code": ["0x3", "3"],
+        "priority": "error",
+        "message": "Fuel cell malfunction"
+      },
+      {
+        "code": ["0x8", "8"],
+        "priority": "error",
+        "message": "Battery voltage low - replace battery"
+      },
+      {
+        "code": ["0x9", "9"],
+        "priority": "critical",
+        "message": "Battery and hydrogen stick need replacement"
+      },
+      {
+        "code": ["0xb", "b", "B"],
+        "priority": "critical",
+        "message": "Multiple system failures detected"
+      }
+    ],
+    "conditions": [
+      "warning: Vbat < 8: Battery voltage critically low ({Vbat}V)",
+      "warning: Vbat < 10: Battery voltage low ({Vbat}V)",
+      "warning: Iout > 15: High current detected ({Iout}A)",
+      "warning: Tfc > 60: Temperature too high ({Tfc}°C)",
+      "warning: Tfc < 0: Temperature too low ({Tfc}°C)",
+      "warning: Vfc < 10 & Vfc > 8: Fuel cell voltage in danger zone ({Vfc}V)",
+      "warning: Vfc < 8: Fuel cell voltage critical ({Vfc}V)"
+      
+    ]
+  }
