@@ -268,10 +268,10 @@ class RaceTracker(Static):
             race_info = self.query_one("#race_info", Static)
             race_info.update(f"""[bold cyan]Race Tracker[/bold cyan] {status}
 
-                Race: {self.config['race_name']}
-                Time: {self.format_time(self.elapsed_time)} / {self.format_time(race_duration)}
-                Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
-                """)
+Race: {self.config['race_name']}
+Time: {self.format_time(self.elapsed_time)} / {self.format_time(race_duration)}
+Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
+""")
             
             stick_label = self.query_one("#stick_label", Static)
             stick_label.update(f"[bold]Hydrogen Stick:[/bold] {self.stick_changes}/{self.config['hydrogen_stick_count']} changes ({sticks_remaining} remaining)")
@@ -364,11 +364,22 @@ class DashboardLogApp(App):
         }
 
         ErrorStatus {
-            padding: 1;
-            
-            
+            padding: 1 1 1 1;
+            height: auto;
+            max-height: 6;
             border: solid gray;
         }
+
+        #error_scroll {
+            height: auto;
+            max-height: 6;
+
+        }
+
+        #error_header {
+            padding: 0 0 1 0;
+        }
+
 
         ResourceMonitor {
             padding: 1;
@@ -689,6 +700,8 @@ class DashboardLogApp(App):
     def action_reload_config(self):
         self.race_tracker.reload_race_config()
         self.race_tracker.update_display()
+        #self.err_status.reload_config()
+        #self.write_log("Configuration reloaded")
 
     def action_save_config(self):
         """Save the current config file - only works when text editor has focus"""
