@@ -1,9 +1,8 @@
 from datetime import datetime
 import subprocess
 from textual.app import App, ComposeResult
-from textual.containers import Grid, Vertical, Container
-from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane, MarkdownViewer, DirectoryTree, ProgressBar
-from textual.screen import ModalScreen
+from textual.containers import Grid, Vertical
+from textual.widgets import Header, Footer, Static, RichLog, TabbedContent, TabPane, MarkdownViewer, DirectoryTree, ProgressBar
 from textual.binding import Binding
 import os
 from pathlib import Path
@@ -17,6 +16,9 @@ from bin.connectionscreen import *
 from bin.connectionstatus import *
 from bin.quitscreen import *
 from bin.resourcemonitor import *
+from bin.dashboard import *
+from bin.statsdashboard import *
+from bin.errorstatus import *
 
 di = 0
 tim = 0
@@ -51,8 +53,6 @@ def load_race_config():
         json.dump(default_config, f, indent=2)
     
     return default_config
-
-
 
 class RaceTracker(Static):
     """Widget to track race progress and component changes"""
@@ -290,149 +290,6 @@ Press [bold]R[/bold] to start race | Press [bold]Shift+R[/bold] to reset
             stick_bar.update(progress=100)
             battery_bar.update(progress=100)
 
-class ErrorStatus(Static):
-    def __init__(self):
-        super().__init__()
-        
-        self.update_status(None)
-    
-    def update_status(self, data):
-        global nodata
-        if data is None:
-            self.update(f"[dim]No data ({nodata})[/dim]")
-        else:
-            err_code = data['Di']
-            if err_code == "0x0" or err_code == "0":
-               self.update("[green]Error code: 0 - OK[/green]")
-               
-            elif err_code == "0x1" or err_code == "1":
-                self.update("[yellow]Error code: 1 - Vymen bombicku[/yellow]")
-            elif err_code == "0x3" or err_code == "3":
-                self.update("[red]Error code: 3 - Neco spatne se clankem[/red]")
-            elif err_code == "0x8" or err_code == "8":
-                self.update("[red]Error code: 8 - Vymen baterku[/red]")
-            elif err_code == "0x9" or err_code == "9":
-                self.update("[red]Error code: 9 - Vymen baterku a bombicku asi[/red]")
-            elif err_code == "0xb" or err_code == "b" or err_code == "B":
-                self.update("[red]Error code: B - Vsechno spatne[/red]")
-            else:
-                self.update(f"[bold red]Error code {err_code}: Unknown error - I suppose everything is completly fucked - Good luck[/bold red]")
-                            
-class Dashboard(Static):
-    def __init__(self):
-        super().__init__()
-        self.update_data(None)
-    
-    def update_data(self, data):
-        if data is None:
-            self.update(
-                "[bold cyan]Dashboard[/bold cyan]\n\n"
-                #"[dim]No data[/dim]\n"
-                #"Error code: --\n"
-                "Napeti na baterce: -- V\n"
-                "Proud do menice motoru: -- A\n"
-                "Vykon menice motoru: -- W\n"
-                "Napeti clanku: -- V\n"
-                "Vykon clanku: -- W\n"
-                "Teplota clanku: -- °C\n"
-                "Seconds since last reset: -- s\n"
-            )
-        else:
-            self.update(
-                "[bold cyan]Dashboard[/bold cyan]\n\n"
-                #f"Error code: {data['Di']}\n"
-                f"Napeti na baterce: {data['Vbat']} V\n"
-                f"Proud do menice motoru: {data['Iout']} A\n"
-                f"Vykon menice motoru: {data['Pout']} W\n"
-                f"Napeti clanku: {data['Vfc']} V\n"
-                f"Vykon clanku: {data['Pfc'] } W\n"
-                f"Teplota clanku: {data['Tfc']} °C\n"
-                f"Seconds since last reset: {data['Tim']} s\n"
-            )
-
-class StatsDashboard(Static):
-    def __init__(self):
-        super().__init__()
-        
-        self.stats = {
-            "Vbat": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Iout": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Pout": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Vfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Pfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Tfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0}
-        }
-        self.update_stats(None)
-    
-    def update_stats(self, data):
-        if data == None:
-            if self.stats["Vbat"]["count"] == 0:
-                self.update(
-                    f"[bold cyan]Statistics[/bold cyan]\n\n"
-                    f"Vbat: Min: -- V | "
-                    f"Max: -- V | Avg: -- V\n"
-                    f"Iout: Min: -- A | "
-                    f"Max: -- A | Avg: -- A\n"
-                    f"Pout: Min: -- W | "
-                    f"Max: -- W | Avg: -- W\n"
-                    f"Vfc:  Min: -- V | "
-                    f"Max: -- V | Avg: -- V\n"
-                    f"Pfc:  Min: -- W | "
-                    f"Max: -- W | Avg: -- W\n"
-                    f"Tfc:  Min: -- °C | "
-                    f"Max: -- °C | Avg: -- °C\n"
-                )
-            else:
-                self.update(
-                    f"[bold cyan]Statistics[/bold cyan]\n\n"
-                    f"Vbat: Min: {self.stats['Vbat']['min']:.2f}V | "
-                    f"Max: {self.stats['Vbat']['max']:.2f}V | Avg: -- V\n"
-                    f"Iout: Min: {self.stats['Iout']['min']:.2f}A | "
-                    f"Max: {self.stats['Iout']['max']:.2f}A | Avg: -- A\n"
-                    f"Pout: Min: {self.stats['Tfc']['min']}W | "
-                    f"Max: {self.stats['Pout']['max']}W | Avg:-- W\n"
-                    f"Vfc:  Min: {self.stats['Vfc']['min']:.2f}V | "
-                    f"Max: {self.stats['Vfc']['max']:.2f}V | Avg: -- V\n"
-                    f"Pfc:  Min: {self.stats['Tfc']['min']}W | "
-                    f"Max: {self.stats['Pfc']['max']}W | Avg: -- W\n"
-                    f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
-                    f"Max: {self.stats['Tfc']['max']}°C | Avg: -- °C\n"
-                )
-        else:
-            numeric_keys = ["Vbat", "Iout", "Pout", "Vfc","Pfc", "Tfc"]
-            for key in numeric_keys:
-                if key in data:
-                    value = float(data[key])
-                    stat = self.stats[key]
-                    stat["min"] = min(stat["min"], value)
-                    stat["max"] = max(stat["max"], value)
-                    stat["count"] += 1
-                    stat["sum"] += value
-                    stat["avg"] = stat["sum"] / stat["count"]
-            
-            self.update(
-                f"[bold cyan]Statistics[/bold cyan]\n\n"
-                f"Vbat: Min: {self.stats['Vbat']['min']:.2f}V | "
-                f"Max: {self.stats['Vbat']['max']:.2f}V | Avg: {self.stats['Vbat']['avg']:.2f}V\n"
-                f"Iout: Min: {self.stats['Iout']['min']:.2f}A | "
-                f"Max: {self.stats['Iout']['max']:.2f}A | Avg: {self.stats['Iout']['avg']:.2f}A\n"
-                f"Pout: Min: {self.stats['Tfc']['min']}W | "
-                f"Max: {self.stats['Pout']['max']}W | Avg: {self.stats['Pout']['avg']:.1f}W\n"
-                f"Vfc:  Min: {self.stats['Vfc']['min']:.2f}V | "
-                f"Max: {self.stats['Vfc']['max']:.2f}V | Avg: {self.stats['Vfc']['avg']:.2f}V\n"
-                f"Pfc:  Min: {self.stats['Tfc']['min']}W | "
-                f"Max: {self.stats['Pfc']['max']}W | Avg: {self.stats['Pfc']['avg']:.1f}W\n"
-                f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
-                f"Max: {self.stats['Tfc']['max']}°C | Avg: {self.stats['Tfc']['avg']:.1f}°C\n"
-            )
-    
-    def reset_stats(self):
-        for stat in self.stats.values():
-            stat["min"] = float('inf')
-            stat["max"] = float('-inf')
-            stat["avg"] = 0
-            stat["count"] = 0
-            stat["sum"] = 0
 
 class FilteredDirectoryTree(DirectoryTree):
     def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
@@ -683,17 +540,18 @@ class DashboardLogApp(App):
     def update_data(self):    
         #Update dashboard with new data
         #self.write_log("reading update")
-        
+        global nodata
+
         if not self.is_connected:
             data = None
             self.dashboard.update_data(None)
             self.stats.update_stats(None)
-            self.err_status.update_status(None)
+            self.err_status.update_status(None, nodata)
             return
             
         data = None
         parsed_data = None
-        global nodata
+        
         # Generate or read data based on connection type
    
         while not self.queue.empty():
@@ -702,7 +560,7 @@ class DashboardLogApp(App):
                        
             if not data:
                 nodata += 1
-                self.err_status.update_status(None)
+                self.err_status.update_status(None, nodata)
                 return
             
 
@@ -715,7 +573,7 @@ class DashboardLogApp(App):
                 self.write_log(f"{data_type[1].strip()}")
                 self.dashboard.update_data(parsed_data)
                 self.stats.update_stats(parsed_data)
-                self.err_status.update_status(parsed_data)
+                self.err_status.update_status(parsed_data, nodata)
             #self.update_css(parsed_data)
             elif data_type[0] == "info":
                 self.write_log(f"{data_type[1].strip()}")
