@@ -1,4 +1,3 @@
-import psutil
 from datetime import datetime
 import subprocess
 from textual.app import App, ComposeResult
@@ -13,6 +12,11 @@ import threading
 from queue import Queue
 import time
 import json
+
+from bin.connectionscreen import *
+from bin.connectionstatus import *
+from bin.quitscreen import *
+from bin.resourcemonitor import *
 
 di = 0
 tim = 0
@@ -47,6 +51,8 @@ def load_race_config():
         json.dump(default_config, f, indent=2)
     
     return default_config
+
+
 
 class RaceTracker(Static):
     """Widget to track race progress and component changes"""
@@ -214,19 +220,19 @@ class RaceTracker(Static):
             # Build status display
             stick_status = ""
             if stick_over_percent > 0:
-                stick_status = f" [green]↑ {stick_over_percent:.1f}% over expected! (BONUS)[/green]"
+                stick_status = f" [green]↑ {stick_over_percent:.1f}% over expected![/green]"
             elif stick_remaining_percent < 10:
-                stick_status = " [bold red]⚠ CHANGE NOW![/bold red]"
+                stick_status = " [bold red]Change now![/bold red]"
             elif stick_remaining_percent < 25:
-                stick_status = " [yellow]⚠ Change soon[/yellow]"
+                stick_status = " [yellow]Change soon[/yellow]"
             
             battery_status = ""
             if battery_over_percent > 0:
-                battery_status = f" [green]↑ {battery_over_percent:.1f}% over expected! (BONUS)[/green]"
+                battery_status = f" [green]↑ {battery_over_percent:.1f}% over expected![/green]"
             elif battery_remaining_percent < 10:
-                battery_status = " [bold red]⚠ CHANGE NOW![/bold red]"
+                battery_status = " [bold red]Change now[/bold red]"
             elif battery_remaining_percent < 25:
-                battery_status = " [yellow]⚠ Change soon[/yellow]"
+                battery_status = " [yellow]Change soon[/yellow]"
             
             # Update text displays
             race_info = self.query_one("#race_info", Static)
@@ -242,7 +248,7 @@ Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
             
             stick_info = self.query_one("#stick_info", Static)
             if stick_time_left > 0:
-                stick_info.update(f"Time left to expected change: {self.format_time(stick_time_left)} ({stick_remaining_percent:.1f}% remaining){stick_status}")
+                stick_info.update(f"Time left to estimated change: {self.format_time(stick_time_left)} ({stick_remaining_percent:.1f}% remaining){stick_status}")
             else:
                 stick_info.update(f"Time in use: {self.format_time(time_since_stick)} (Expected: {self.format_time(self.current_stick_interval)}){stick_status}")
             
@@ -251,7 +257,7 @@ Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
             
             battery_info = self.query_one("#battery_info", Static)
             if battery_time_left > 0:
-                battery_info.update(f"Time left to expected change: {self.format_time(battery_time_left)} ({battery_remaining_percent:.1f}% remaining){battery_status}")
+                battery_info.update(f"Time left to estimated change: {self.format_time(battery_time_left)} ({battery_remaining_percent:.1f}% remaining){battery_status}")
             else:
                 battery_info.update(f"Time in use: {self.format_time(time_since_battery)} (Expected: {self.format_time(self.current_battery_interval)}){battery_status}")
             
@@ -283,225 +289,6 @@ Press [bold]R[/bold] to start race | Press [bold]Shift+R[/bold] to reset
             battery_bar = self.query_one("#battery_progress", ProgressBar)
             stick_bar.update(progress=100)
             battery_bar.update(progress=100)
-
-class QuitScreen(ModalScreen):
-    """Screen with a dialog to quit."""
-
-    CSS = """
-        QuitScreen {
-        align: center middle;
-        }
-
-        #dialog {
-            grid-size: 2;
-            grid-gutter: 1 2;
-            grid-rows: 1fr 3;
-            padding: 0 1;
-            width: 60;
-            height: 11;
-            border: thick $background 80%;
-            background: $surface;
-        }
-
-        #question {
-            column-span: 2;
-            height: 1fr;
-            width: 1fr;
-            content-align: center middle;
-        }
-
-        Button {
-            width: 100%;
-        }   
-    """
-
-    BINDINGS = [
-        Binding("escape", "dismiss", "Cancel", show=True),
-    ]
-
-    def __init__(self):
-        super().__init__()
-
-    def compose(self) -> ComposeResult:
-        yield Grid(
-            Label("Are you sure you want to quit?", id="question"),
-            Button("Quit", variant="error", id="quit"),
-            Button("Cancel", variant="default", id="cancel"),
-            id="dialog",
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "quit":
-            self.dismiss({
-                "result": True
-            })
-        elif event.button.id == "cancel":
-            self.dismiss(None)
-
-class ConnectionScreen(ModalScreen):
-    CSS = """
-    ConnectionScreen {
-        align: center middle;
-    }
-    
-    #connection_dialog {
-        width: 60;
-        height: auto;
-        border: thick $background 80%;
-        background: $surface;
-        padding: 1 2;
-    }
-
-    #serial_settings {
-        width:auto;
-        height: auto;
-        
-        background: $surface;
-        
-    }
-    
-    #connection_dialog Label {
-        margin: 1 0;
-    }
-    
-    #connection_dialog Input {
-        margin-bottom: 1;
-    }
-    
-    #connection_dialog Select {
-        margin-bottom: 1;
-    }
-    
-    #button_container {
-        layout: horizontal;
-        height: auto;
-        margin-top: 1;
-    }
-    
-    #button_container Button {
-        margin: 0 1;
-    }
-    .hidden {
-        display: none;
-    }
-    """
-    
-    BINDINGS = [
-        Binding("escape", "dismiss", "Cancel", show=True),
-    ]
-    
-    def __init__(self):
-        super().__init__()
-        self.connection_type = "simulated"
-        self.port = ""
-        self.baudrate = "9600"
-    
-    def compose(self) -> ComposeResult:
-        with Container(id="connection_dialog"):
-            yield Label("[bold cyan]Connection Settings[/bold cyan]")
-            yield Label("Connection Type:")
-            yield Select(
-                [
-                    ("Simulated Data", "simulated"),
-                    ("Serial Port", "serial"),
-
-                ],
-                id="connection_type",
-                value="simulated"
-            )
-            # Add visibility: hidden by default
-            with Container(id="serial_settings", classes="hidden"):
-                yield Label("Port/Address (for Serial):")
-                yield Input(placeholder="e.g., COM3, /dev/ttyUSB0, or BT address", id="port")
-                yield Label("Baudrate (for Serial):")
-                yield Select(
-                    [
-                        ("9600", "9600"),
-                        ("19200", "19200"),
-                        ("38400", "38400"),
-                        ("57600", "57600"),
-                        ("115200", "115200"),
-                    ],
-                    id="baudrate",
-                    value="9600"
-                )
-            with Container(id="button_container"):
-                yield Button("Connect", variant="primary", id="connect")
-                yield Button("Cancel", variant="default", id="cancel")
-
-    def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "connection_type":
-            self.connection_type = event.value
-            # Show/hide serial settings based on selection
-            serial_container = self.query_one("#serial_settings")
-            if event.value == "serial":
-                serial_container.remove_class("hidden")
-            else:
-                serial_container.add_class("hidden")
-        elif event.select.id == "baudrate":
-            self.baudrate = event.value
-    
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "port":
-            self.port = event.value
-    
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "connect":
-            self.dismiss({
-                "type": self.connection_type,
-                "port": self.port,
-                "baudrate": self.baudrate
-            })
-        elif event.button.id == "cancel":
-            self.dismiss(None)
-
-class ResourceMonitor(Static):
-    def __init__(self):
-        super().__init__()
-        self.process = psutil.Process()
-        self.update_resources()
-    
-    def update_resources(self):
-        try:
-            cpu_percent = self.process.cpu_percent(interval=0.1)    
-            memory_info = self.process.memory_info()
-            memory_mb = memory_info.rss / 1024 / 1024
-            
-            self.update(
-                f"Resources | "
-                f"CPU: {cpu_percent:.2f}% | "
-                f"RAM: {memory_mb:.1f} MB"
-            )
-        except Exception:
-            self.update("[dim]Resource monitoring unavailable[/dim]")
-
-class ConnectionStatus(Static):
-    def __init__(self):
-        super().__init__()
-        self.status = "Disconnected"
-        self.connection_info = {}
-        self.update_status(None)
-    
-    def update_status(self, status: str, info: dict = None):
-        self.status = status
-        self.connection_info = info or {}
-        
-        if status == "Connected":
-            conn_type = self.connection_info.get("type", "Unknown")
-            if conn_type == "simulated":
-                details = "Simulated Data"
-            elif conn_type == "serial":
-                details = f"Serial: {self.connection_info.get('port', 'N/A')} @ {self.connection_info.get('baudrate', 'N/A')}"
-            elif conn_type == "bluetooth":
-                details = f"Bluetooth: {self.connection_info.get('port', 'N/A')}"
-            else:
-                details = "Unknown"
-            
-            self.update(f"[green]● Connected[/green] - {details}")
-        elif status == "Connecting":
-            self.update(f"[bold yellow]⟳ Connecting...[/bold yellow]")
-        else:
-            self.update(f"[bold red]○ Disconnected[/bold red]")
 
 class ErrorStatus(Static):
     def __init__(self):
@@ -646,7 +433,6 @@ class StatsDashboard(Static):
             stat["avg"] = 0
             stat["count"] = 0
             stat["sum"] = 0
-
 
 class FilteredDirectoryTree(DirectoryTree):
     def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
