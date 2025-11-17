@@ -1,10 +1,8 @@
-import psutil
 from datetime import datetime
 import subprocess
 from textual.app import App, ComposeResult
-from textual.containers import Grid, Vertical, Container
-from textual.widgets import Header, Footer, Static, RichLog, Button, Label, Select, Input, TabbedContent, TabPane, MarkdownViewer, DirectoryTree
-from textual.screen import ModalScreen
+from textual.containers import Grid, Vertical
+from textual.widgets import Header, Footer, Static, RichLog, TabbedContent, TabPane, MarkdownViewer, DirectoryTree, ProgressBar, TextArea
 from textual.binding import Binding
 import os
 from pathlib import Path
@@ -12,6 +10,15 @@ from typing import Iterable
 import threading
 from queue import Queue
 import time
+import json
+
+from bin.connectionscreen import *
+from bin.connectionstatus import *
+from bin.quitscreen import *
+from bin.resourcemonitor import *
+from bin.dashboard import *
+from bin.statsdashboard import *
+from bin.errorstatus import *
 
 di = 0
 tim = 0
@@ -22,373 +29,306 @@ def get_data(data):
     data = dict(p.split(":") for p in data.split())
     return data
 
-class QuitScreen(ModalScreen):
-    """Screen with a dialog to quit."""
-
-    CSS = """
-        QuitScreen {
-        align: center middle;
-        }
-
-        #dialog {
-            grid-size: 2;
-            grid-gutter: 1 2;
-            grid-rows: 1fr 3;
-            padding: 0 1;
-            width: 60;
-            height: 11;
-            border: thick $background 80%;
-            background: $surface;
-        }
-
-        #question {
-            column-span: 2;
-            height: 1fr;
-            width: 1fr;
-            content-align: center middle;
-        }
-
-        Button {
-            width: 100%;
-        }   
-    """
-
-    BINDINGS = [
-        Binding("escape", "dismiss", "Cancel", show=True),
-    ]
-
-    def __init__(self):
-        super().__init__()
-
-    def compose(self) -> ComposeResult:
-        yield Grid(
-            Label("Are you sure you want to quit?", id="question"),
-            Button("Quit", variant="error", id="quit"),
-            Button("Cancel", variant="default", id="cancel"),
-            id="dialog",
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "quit":
-            self.dismiss({
-                "result": True
-            })
-        elif event.button.id == "cancel":
-            self.dismiss(None)
-
-class ConnectionScreen(ModalScreen):
-    CSS = """
-    ConnectionScreen {
-        align: center middle;
+def load_race_config():
+    """Load race configuration from file"""
+    config_path = Path("config/race_config.json")
+    default_config = {
+        "race_duration_seconds": 3600,
+        "hydrogen_stick_count": 4,
+        "battery_count": 2,
+        "race_name": "Hydrogen Race",
+        "enable_alerts": True,
+        "alert_threshold_percent": 10
     }
     
-    #connection_dialog {
-        width: 60;
-        height: auto;
-        border: thick $background 80%;
-        background: $surface;
-        padding: 1 2;
-    }
-
-    #serial_settings {
-        width:auto;
-        height: auto;
-        
-        background: $surface;
-        
-    }
-    
-    #connection_dialog Label {
-        margin: 1 0;
-    }
-    
-    #connection_dialog Input {
-        margin-bottom: 1;
-    }
-    
-    #connection_dialog Select {
-        margin-bottom: 1;
-    }
-    
-    #button_container {
-        layout: horizontal;
-        height: auto;
-        margin-top: 1;
-    }
-    
-    #button_container Button {
-        margin: 0 1;
-    }
-    .hidden {
-        display: none;
-    }
-    """
-    
-    BINDINGS = [
-        Binding("escape", "dismiss", "Cancel", show=True),
-    ]
-    
-    def __init__(self):
-        super().__init__()
-        self.connection_type = "simulated"
-        self.port = ""
-        self.baudrate = "9600"
-    
-    def compose(self) -> ComposeResult:
-        with Container(id="connection_dialog"):
-            yield Label("[bold cyan]Connection Settings[/bold cyan]")
-            yield Label("Connection Type:")
-            yield Select(
-                [
-                    ("Simulated Data", "simulated"),
-                    ("Serial Port", "serial"),
-
-                ],
-                id="connection_type",
-                value="simulated"
-            )
-            # Add visibility: hidden by default
-            with Container(id="serial_settings", classes="hidden"):
-                yield Label("Port/Address (for Serial):")
-                yield Input(placeholder="e.g., COM3, /dev/ttyUSB0, or BT address", id="port")
-                yield Label("Baudrate (for Serial):")
-                yield Select(
-                    [
-                        ("9600", "9600"),
-                        ("19200", "19200"),
-                        ("38400", "38400"),
-                        ("57600", "57600"),
-                        ("115200", "115200"),
-                    ],
-                    id="baudrate",
-                    value="9600"
-                )
-            with Container(id="button_container"):
-                yield Button("Connect", variant="primary", id="connect")
-                yield Button("Cancel", variant="default", id="cancel")
-
-    def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "connection_type":
-            self.connection_type = event.value
-            # Show/hide serial settings based on selection
-            serial_container = self.query_one("#serial_settings")
-            if event.value == "serial":
-                serial_container.remove_class("hidden")
-            else:
-                serial_container.add_class("hidden")
-        elif event.select.id == "baudrate":
-            self.baudrate = event.value
-    
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "port":
-            self.port = event.value
-    
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "connect":
-            self.dismiss({
-                "type": self.connection_type,
-                "port": self.port,
-                "baudrate": self.baudrate
-            })
-        elif event.button.id == "cancel":
-            self.dismiss(None)
-
-class ResourceMonitor(Static):
-    def __init__(self):
-        super().__init__()
-        self.process = psutil.Process()
-        self.update_resources()
-    
-    def update_resources(self):
+    if config_path.exists():
         try:
-            cpu_percent = self.process.cpu_percent(interval=0.1)    
-            memory_info = self.process.memory_info()
-            memory_mb = memory_info.rss / 1024 / 1024
-            
-            self.update(
-                f"Resources | "
-                f"CPU: {cpu_percent:.2f}% | "
-                f"RAM: {memory_mb:.1f} MB"
-            )
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return {**default_config, **config}
         except Exception:
-            self.update("[dim]Resource monitoring unavailable[/dim]")
+            pass
+    
+    with open(config_path, 'w') as f:
+        json.dump(default_config, f, indent=2)
+    
+    return default_config
 
-class ConnectionStatus(Static):
+class RaceTracker(Static):
+    """Widget to track race progress and component changes"""
+    
     def __init__(self):
         super().__init__()
-        self.status = "Disconnected"
-        self.connection_info = {}
-        self.update_status(None)
-    
-    def update_status(self, status: str, info: dict = None):
-        self.status = status
-        self.connection_info = info or {}
+        self.config = load_race_config()
+        self.race_start_time = None
+        self.is_racing = False
+        self.elapsed_time = 0
+        self.stick_changes = 0
+        self.battery_changes = 0
         
-        if status == "Connected":
-            conn_type = self.connection_info.get("type", "Unknown")
-            if conn_type == "simulated":
-                details = "Simulated Data"
-            elif conn_type == "serial":
-                details = f"Serial: {self.connection_info.get('port', 'N/A')} @ {self.connection_info.get('baudrate', 'N/A')}"
-            elif conn_type == "bluetooth":
-                details = f"Bluetooth: {self.connection_info.get('port', 'N/A')}"
-            else:
-                details = "Unknown"
+        # Track when last changes occurred
+        self.last_stick_change_time = 0
+        self.last_battery_change_time = 0
+        
+        # Initial intervals
+        self.stick_interval = self.config["race_duration_seconds"] / self.config["hydrogen_stick_count"]
+        self.battery_interval = self.config["race_duration_seconds"] / self.config["battery_count"]
+        
+        # Current expected intervals (recalculated after each change)
+        self.current_stick_interval = self.stick_interval
+        self.current_battery_interval = self.battery_interval
+    
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(id="race_info")
+            yield Static("[bold]Hydrogen Stick Progress:[/bold]", id="stick_label")
+            yield ProgressBar(total=100, show_eta=False, id="stick_progress")
+            yield Static(id="stick_info")
+            yield Static("[bold]Battery Progress:[/bold]", id="battery_label")
+            yield ProgressBar(total=100, show_eta=False, id="battery_progress")
+            yield Static(id="battery_info")
+    
+    def on_mount(self):
+        self.update_display()
+    
+    def reload_race_config(self):
+        self.config = load_race_config()
+        # Recalculate base intervals
+        self.stick_interval = self.config["race_duration_seconds"] / self.config["hydrogen_stick_count"]
+        self.battery_interval = self.config["race_duration_seconds"] / self.config["battery_count"]
+        
+        # If racing, recalculate current intervals based on remaining items
+        if self.is_racing:
+            sticks_remaining = self.config["hydrogen_stick_count"] - self.stick_changes
+            batteries_remaining = self.config["battery_count"] - self.battery_changes
+            time_remaining = self.config["race_duration_seconds"] - self.elapsed_time
             
-            self.update(f"[green]● Connected[/green] - {details}")
-        elif status == "Connecting":
-            self.update(f"[bold yellow]⟳ Connecting...[/bold yellow]")
+            if sticks_remaining > 0:
+                self.current_stick_interval = time_remaining / sticks_remaining
+            if batteries_remaining > 0:
+                self.current_battery_interval = time_remaining / batteries_remaining
         else:
-            self.update(f"[bold red]○ Disconnected[/bold red]")
+            self.current_stick_interval = self.stick_interval
+            self.current_battery_interval = self.battery_interval
 
-class ErrorStatus(Static):
-    def __init__(self):
-        super().__init__()
+    def start_race(self):
+        self.race_start_time = time.time()
+        self.is_racing = True
+        self.elapsed_time = 0
+        self.stick_changes = 0
+        self.battery_changes = 0
+        self.last_stick_change_time = 0
+        self.last_battery_change_time = 0
+        self.current_stick_interval = self.stick_interval
+        self.current_battery_interval = self.battery_interval
+    
+    def stop_race(self):
+        self.is_racing = False
+    
+    def reset_race(self):
+        self.race_start_time = None
+        self.is_racing = False
+        self.elapsed_time = 0
+        self.stick_changes = 0
+        self.battery_changes = 0
+        self.last_stick_change_time = 0
+        self.last_battery_change_time = 0
+        self.current_stick_interval = self.stick_interval
+        self.current_battery_interval = self.battery_interval
+        self.update_display()
+    
+    def log_stick_change(self):
+        if not self.is_racing:
+            return 1
         
-        self.update_status(None)
-    
-    def update_status(self, data):
-        global nodata
-        if data is None:
-            self.update(f"[dim]No data ({nodata})[/dim]")
-        else:
-            err_code = data['Di']
-            if err_code == "0x0" or err_code == "0":
-               self.update("[green]Error code: 0 - OK[/green]")
-               
-            elif err_code == "0x1" or err_code == "1":
-                self.update("[yellow]Error code: 1 - Vymen bombicku[/yellow]")
-            elif err_code == "0x3" or err_code == "3":
-                self.update("[red]Error code: 3 - Neco spatne se clankem[/red]")
-            elif err_code == "0x8" or err_code == "8":
-                self.update("[red]Error code: 8 - Vymen baterku[/red]")
-            elif err_code == "0x9" or err_code == "9":
-                self.update("[red]Error code: 9 - Vymen baterku a bombicku asi[/red]")
-            elif err_code == "0xb" or err_code == "b" or err_code == "B":
-                self.update("[red]Error code: B - Vsechno spatne[/red]")
-            else:
-                self.update(f"[bold red]Error code {err_code}: Unknown error - I suppose everything is completly fucked - Good luck[/bold red]")
-                            
-class Dashboard(Static):
-    def __init__(self):
-        super().__init__()
-        self.update_data(None)
-    
-    def update_data(self, data):
-        if data is None:
-            self.update(
-                "[bold cyan]Dashboard[/bold cyan]\n\n"
-                #"[dim]No data[/dim]\n"
-                #"Error code: --\n"
-                "Napeti na baterce: -- V\n"
-                "Proud do menice motoru: -- A\n"
-                "Vykon menice motoru: -- W\n"
-                "Napeti clanku: -- V\n"
-                "Vykon clanku: -- W\n"
-                "Teplota clanku: -- °C\n"
-                "Seconds since last reset: -- s\n"
-            )
-        else:
-            self.update(
-                "[bold cyan]Dashboard[/bold cyan]\n\n"
-                #f"Error code: {data['Di']}\n"
-                f"Napeti na baterce: {data['Vbat']} V\n"
-                f"Proud do menice motoru: {data['Iout']} A\n"
-                f"Vykon menice motoru: {data['Pout']} W\n"
-                f"Napeti clanku: {data['Vfc']} V\n"
-                f"Vykon clanku: {data['Pfc'] } W\n"
-                f"Teplota clanku: {data['Tfc']} °C\n"
-                f"Seconds since last reset: {data['Tim']} s\n"
-            )
-
-class StatsDashboard(Static):
-    def __init__(self):
-        super().__init__()
+        # Check if we've reached the limit
+        if self.stick_changes >= self.config["hydrogen_stick_count"]:
+            return 1 # Already used all sticks
         
-        self.stats = {
-            "Vbat": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Iout": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Pout": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Vfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Pfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Tfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0}
-        }
-        self.update_stats(None)
+        self.stick_changes += 1
+        self.last_stick_change_time = self.elapsed_time
+        
+        # Recalculate interval: distribute remaining time evenly among remaining sticks
+        sticks_remaining = self.config["hydrogen_stick_count"] - self.stick_changes
+        if sticks_remaining > 0:
+            time_remaining = self.config["race_duration_seconds"] - self.elapsed_time
+            self.current_stick_interval = time_remaining / sticks_remaining
+        
+        self.update_display()
+        return 0
     
-    def update_stats(self, data):
-        if data == None:
-            if self.stats["Vbat"]["count"] == 0:
-                self.update(
-                    f"[bold cyan]Statistics[/bold cyan]\n\n"
-                    f"Vbat: Min: -- V | "
-                    f"Max: -- V | Avg: -- V\n"
-                    f"Iout: Min: -- A | "
-                    f"Max: -- A | Avg: -- A\n"
-                    f"Pout: Min: -- W | "
-                    f"Max: -- W | Avg: -- W\n"
-                    f"Vfc:  Min: -- V | "
-                    f"Max: -- V | Avg: -- V\n"
-                    f"Pfc:  Min: -- W | "
-                    f"Max: -- W | Avg: -- W\n"
-                    f"Tfc:  Min: -- °C | "
-                    f"Max: -- °C | Avg: -- °C\n"
-                )
-            else:
-                self.update(
-                    f"[bold cyan]Statistics[/bold cyan]\n\n"
-                    f"Vbat: Min: {self.stats['Vbat']['min']:.2f}V | "
-                    f"Max: {self.stats['Vbat']['max']:.2f}V | Avg: -- V\n"
-                    f"Iout: Min: {self.stats['Iout']['min']:.2f}A | "
-                    f"Max: {self.stats['Iout']['max']:.2f}A | Avg: -- A\n"
-                    f"Pout: Min: {self.stats['Tfc']['min']}W | "
-                    f"Max: {self.stats['Pout']['max']}W | Avg:-- W\n"
-                    f"Vfc:  Min: {self.stats['Vfc']['min']:.2f}V | "
-                    f"Max: {self.stats['Vfc']['max']:.2f}V | Avg: -- V\n"
-                    f"Pfc:  Min: {self.stats['Tfc']['min']}W | "
-                    f"Max: {self.stats['Pfc']['max']}W | Avg: -- W\n"
-                    f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
-                    f"Max: {self.stats['Tfc']['max']}°C | Avg: -- °C\n"
-                )
-        else:
-            numeric_keys = ["Vbat", "Iout", "Pout", "Vfc","Pfc", "Tfc"]
-            for key in numeric_keys:
-                if key in data:
-                    value = float(data[key])
-                    stat = self.stats[key]
-                    stat["min"] = min(stat["min"], value)
-                    stat["max"] = max(stat["max"], value)
-                    stat["count"] += 1
-                    stat["sum"] += value
-                    stat["avg"] = stat["sum"] / stat["count"]
+    def log_battery_change(self):
+        if not self.is_racing:
+            return 1
+        
+        # Check if we've reached the limit
+        if self.battery_changes >= self.config["battery_count"]:
+            return 1 # Already used all batteries
+        
+        self.battery_changes += 1
+        self.last_battery_change_time = self.elapsed_time
+        
+        # Recalculate interval: distribute remaining time evenly among remaining batteries
+        batteries_remaining = self.config["battery_count"] - self.battery_changes
+        if batteries_remaining > 0:
+            time_remaining = self.config["race_duration_seconds"] - self.elapsed_time
+            self.current_battery_interval = time_remaining / batteries_remaining
+        
+        self.update_display()
+        return 0
+    
+    def update_timer(self):
+        if self.is_racing and self.race_start_time:
+            self.elapsed_time = time.time() - self.race_start_time
+            self.update_display()
+    
+    def format_time(self, seconds):
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    
+    def update_display(self):
+        race_duration = self.config["race_duration_seconds"]
+        
+        if self.is_racing:
+            race_progress = min((self.elapsed_time / race_duration) * 100, 100)
+            time_remaining = max(race_duration - self.elapsed_time, 0)
             
-            self.update(
-                f"[bold cyan]Statistics[/bold cyan]\n\n"
-                f"Vbat: Min: {self.stats['Vbat']['min']:.2f}V | "
-                f"Max: {self.stats['Vbat']['max']:.2f}V | Avg: {self.stats['Vbat']['avg']:.2f}V\n"
-                f"Iout: Min: {self.stats['Iout']['min']:.2f}A | "
-                f"Max: {self.stats['Iout']['max']:.2f}A | Avg: {self.stats['Iout']['avg']:.2f}A\n"
-                f"Pout: Min: {self.stats['Tfc']['min']}W | "
-                f"Max: {self.stats['Pout']['max']}W | Avg: {self.stats['Pout']['avg']:.1f}W\n"
-                f"Vfc:  Min: {self.stats['Vfc']['min']:.2f}V | "
-                f"Max: {self.stats['Vfc']['max']:.2f}V | Avg: {self.stats['Vfc']['avg']:.2f}V\n"
-                f"Pfc:  Min: {self.stats['Tfc']['min']}W | "
-                f"Max: {self.stats['Pfc']['max']}W | Avg: {self.stats['Pfc']['avg']:.1f}W\n"
-                f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
-                f"Max: {self.stats['Tfc']['max']}°C | Avg: {self.stats['Tfc']['avg']:.1f}°C\n"
-            )
-    
-    def reset_stats(self):
-        for stat in self.stats.values():
-            stat["min"] = float('inf')
-            stat["max"] = float('-inf')
-            stat["avg"] = 0
-            stat["count"] = 0
-            stat["sum"] = 0
+            # Calculate time since last change
+            time_since_stick = self.elapsed_time - self.last_stick_change_time
+            time_since_battery = self.elapsed_time - self.last_battery_change_time
+            
+            # Calculate remaining percentage (100% = just changed, 0% = time to change)
+            stick_remaining_percent = max(0, 100 - (time_since_stick / self.current_stick_interval) * 100)
+            battery_remaining_percent = max(0, 100 - (time_since_battery / self.current_battery_interval) * 100)
+            
+            # Calculate time left until expected change
+            stick_time_left = max(0, self.current_stick_interval - time_since_stick)
+            battery_time_left = max(0, self.current_battery_interval - time_since_battery)
+            
+            # Calculate efficiency (how much longer than expected)
+            stick_over_percent = 0
+            battery_over_percent = 0
+            
+            if time_since_stick > self.current_stick_interval:
+                stick_over_percent = ((time_since_stick - self.current_stick_interval) / self.current_stick_interval) * 100
+            
+            if time_since_battery > self.current_battery_interval:
+                battery_over_percent = ((time_since_battery - self.current_battery_interval) / self.current_battery_interval) * 100
+            
+            sticks_remaining = self.config["hydrogen_stick_count"] - self.stick_changes
+            batteries_remaining = self.config["battery_count"] - self.battery_changes
+            
+            status = "[green]● RACING[/green]"
+            
+            # Update progress bars
+            stick_bar = self.query_one("#stick_progress", ProgressBar)
+            battery_bar = self.query_one("#battery_progress", ProgressBar)
+            
+            # Set progress and colors
+            stick_bar.update(progress=stick_remaining_percent)
+            if stick_over_percent > 0:
+                stick_bar.styles.color = "green"
+            elif stick_remaining_percent < 10:
+                stick_bar.styles.color = "red"
+            elif stick_remaining_percent < 25:
+                stick_bar.styles.color = "yellow"
+            else:
+                stick_bar.styles.color = "green"
+            
+            battery_bar.update(progress=battery_remaining_percent)
+            if battery_over_percent > 0:
+                battery_bar.styles.color = "green"
+            elif battery_remaining_percent < 10:
+                battery_bar.styles.color = "red"
+            elif battery_remaining_percent < 25:
+                battery_bar.styles.color = "yellow"
+            else:
+                battery_bar.styles.color = "green"
+            
+            # Build status display
+            stick_status = ""
+            if stick_over_percent > 0:
+                stick_status = f" [green]↑ {stick_over_percent:.1f}% over expected![/green]"
+            elif stick_remaining_percent < 10:
+                stick_status = " [bold red]Change now![/bold red]"
+            elif stick_remaining_percent < 25:
+                stick_status = " [yellow]Change soon[/yellow]"
+            
+            battery_status = ""
+            if battery_over_percent > 0:
+                battery_status = f" [green]↑ {battery_over_percent:.1f}% over expected![/green]"
+            elif battery_remaining_percent < 10:
+                battery_status = " [bold red]Change now[/bold red]"
+            elif battery_remaining_percent < 25:
+                battery_status = " [yellow]Change soon[/yellow]"
+            
+            # Update text displays
+            race_info = self.query_one("#race_info", Static)
+            race_info.update(f"""[bold cyan]Race Tracker[/bold cyan] {status}
+
+                Race: {self.config['race_name']}
+                Time: {self.format_time(self.elapsed_time)} / {self.format_time(race_duration)}
+                Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
+                """)
+            
+            stick_label = self.query_one("#stick_label", Static)
+            stick_label.update(f"[bold]Hydrogen Stick:[/bold] {self.stick_changes}/{self.config['hydrogen_stick_count']} changes ({sticks_remaining} remaining)")
+            
+            stick_info = self.query_one("#stick_info", Static)
+            if stick_time_left > 0:
+                stick_info.update(f"Time left to estimated change: {self.format_time(stick_time_left)} ({stick_remaining_percent:.1f}% remaining){stick_status}")
+            else:
+                stick_info.update(f"Time in use: {self.format_time(time_since_stick)} (Expected: {self.format_time(self.current_stick_interval)}){stick_status}")
+            
+            battery_label = self.query_one("#battery_label", Static)
+            battery_label.update(f"[bold]Battery:[/bold] {self.battery_changes}/{self.config['battery_count']} changes ({batteries_remaining} remaining)")
+            
+            battery_info = self.query_one("#battery_info", Static)
+            if battery_time_left > 0:
+                battery_info.update(f"Time left to estimated change: {self.format_time(battery_time_left)} ({battery_remaining_percent:.1f}% remaining){battery_status}")
+            else:
+                battery_info.update(f"Time in use: {self.format_time(time_since_battery)} (Expected: {self.format_time(self.current_battery_interval)}){battery_status}")
+            
+        else:
+            race_info = self.query_one("#race_info", Static)
+            race_info.update(f"""[bold cyan]Race Tracker[/bold cyan] [dim]○ Not Started[/dim]
+
+Race: {self.config['race_name']}
+Duration: {self.format_time(race_duration)}
+Hydrogen sticks: {self.config['hydrogen_stick_count']} (change every {self.format_time(self.stick_interval)})
+Batteries: {self.config['battery_count']} (change every {self.format_time(self.battery_interval)})
+
+Press [bold]R[/bold] to start race | Press [bold]Shift+R[/bold] to reset
+""")
+            
+            stick_label = self.query_one("#stick_label", Static)
+            stick_label.update("[bold]Hydrogen Stick Progress:[/bold]")
+            
+            battery_label = self.query_one("#battery_label", Static)
+            battery_label.update("[bold]Battery Progress:[/bold]")
+            
+            stick_info = self.query_one("#stick_info", Static)
+            stick_info.update("Not started")
+            
+            battery_info = self.query_one("#battery_info", Static)
+            battery_info.update("Not started")
+            
+            stick_bar = self.query_one("#stick_progress", ProgressBar)
+            battery_bar = self.query_one("#battery_progress", ProgressBar)
+            stick_bar.update(progress=100)
+            battery_bar.update(progress=100)
 
 
-class FilteredDirectoryTree(DirectoryTree):
+class FilteredDirectoryTreeDocs(DirectoryTree):
     def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
         return [path for path in paths if (path.name.endswith(".md") or path.is_dir()) and not path.name.startswith(".")]
+
+class FilteredDirectoryTreeConfig(DirectoryTree):
+    def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
+        return [path for path in paths if (path.name.endswith(".json") or path.is_dir()) and not path.name.startswith(".")]
+
 
 class DashboardLogApp(App):
     CSS = """
@@ -402,12 +342,17 @@ class DashboardLogApp(App):
             grid-columns: 3fr 7fr;
         
         }
+        #config_grid {
+            grid-size: 2 1;
+            grid-columns: 3fr 7fr;
+        
+        }
         Dashboard {
-            padding: 1;
+            padding: 1 1 0 1;
         }
         StatsDashboard {
-            padding: 1;
-            margin-top: 1;
+            padding: 1 1 0 1;
+            
         }
         RichLog {
             padding: 1;
@@ -420,7 +365,7 @@ class DashboardLogApp(App):
 
         ErrorStatus {
             padding: 1;
-            margin-top: 1;
+            
             
             border: solid gray;
         }
@@ -440,13 +385,29 @@ class DashboardLogApp(App):
             height: 100%;
             border: solid $primary;
         }
+        TextArea {
+            height: 100%;
+            border: solid $primary;
+        }
+
+        RaceTracker {
+            padding: 1 1 0 1;
+            
+            
+        }
         """
     
     BINDINGS = [
-        Binding("c", "open_connection", "Connection", show=True),
-        Binding("ctrl+d", "disconnect", "Disconnect", show=True),
-        Binding("q", "request_quit", "Quit", show=True),
-        Binding("ctrl+q", "request_quit", "Quit", show=True),
+        Binding("c", "open_connection", "Connection", show=True, priority=False),
+        Binding("ctrl+d", "disconnect", "Disconnect", show=True, priority=False),
+        Binding("ctrl+q", "request_quit", "Quit", show=True, priority=False),
+        Binding("r", "start_race", "Start Race", show=True, priority=False),
+        Binding("ctrl+r", "reset_race", "Reset Race", show=True, priority=False),
+        Binding("h", "log_hydrostick", "Log Hydrostick", show=True, priority=True),
+        Binding("ctrl+b", "log_battery", "Log Battery", show=True, priority=False),
+        Binding("ctrl+l", "reload_config", "Reload Config", show=True, priority=False),
+        Binding("ctrl+s", "save_config", "Save Config", show=True, priority=False),
+
     ]
     
     def __init__(self):
@@ -458,6 +419,8 @@ class DashboardLogApp(App):
         self.queue = Queue()
         self.read_thread = None
         self.stop_event = None
+        self.race_timer = None
+        self.current_config_file = None
     
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -479,19 +442,29 @@ class DashboardLogApp(App):
 
                         self.stats = StatsDashboard()
                         yield self.stats
+                        self.race_tracker = RaceTracker()
+                        yield self.race_tracker
+
                         self.resource_monitor = ResourceMonitor()
                         yield self.resource_monitor
                     self.data_log = RichLog(highlight=False, markup=True)
                     yield self.data_log
             with TabPane("Docs", id="tab_docs"):
                 with Grid(id="docs_grid"):
-                    self.directory_tree = FilteredDirectoryTree("./", id="doc_tree")
+                    self.directory_tree = FilteredDirectoryTreeDocs("./", id="doc_tree")
                    
                     yield self.directory_tree
 
                     self.markdown_viewer = MarkdownViewer("# Documentation\n\nSelect a markdown file from the directory tree to view it here.", show_table_of_contents=True)
                     self.markdown_viewer.code_indent_guides = False
                     yield self.markdown_viewer
+            with TabPane("Config", id="tab_config"):
+                with Grid(id="config_grid"):
+                    self.config_tree = FilteredDirectoryTreeConfig("./config", id="config_tree")
+                    yield self.config_tree
+
+                    self.config_viewer = TextArea("", language="json", show_line_numbers=True)
+                    yield self.config_viewer
 
         yield Footer()
 
@@ -499,22 +472,25 @@ class DashboardLogApp(App):
         """Called when a file is selected in the directory tree."""
         file_path = str(event.path)
         
-        # Check if it's a markdown file
-        if file_path.endswith('.md'):
+        # Check if it's from the config tree
+        if event.control.id == "config_tree" and file_path.endswith('.json'):
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    # Update the markdown viewer with new content
+                    self.config_viewer.load_text(content)
+                    self.current_config_file = file_path  # Add this line
+            except Exception as e:
+                self.config_viewer.load_text(f"# Error loading file: {str(e)}")
+
+        # Check if it's a markdown file from docs tree
+        elif file_path.endswith('.md'):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
                     self.markdown_viewer.document.update(content)
-                    #self.write_log(f"Loaded documentation: {os.path.basename(file_path)}")
             except Exception as e:
                 error_msg = f"# Error\n\nCould not load file: {file_path}\n\nError: {str(e)}"
                 self.markdown_viewer.document.update(error_msg)
-                #self.write_log(f"Error loading file: {str(e)}")
-        else:
-            self.markdown_viewer.document.update(f"# Unsupported File\n\nThe file `{os.path.basename(file_path)}` is not a markdown file.")
-            #self.write_log(f"Selected non-markdown file: {os.path.basename(file_path)}")
-
     def reader_thread(self, stream, q, stop_event):
    
         while not stop_event.is_set():
@@ -548,12 +524,16 @@ class DashboardLogApp(App):
 
     def action_open_connection(self):
         """Open the connection settings dialog"""
+        if self.config_viewer.has_focus:
+            return
         if self.is_connected:
             self.write_log("Already connected. Disconnect first to change connection.")
             return
         self.push_screen(ConnectionScreen(), self.handle_connection)
 
     def action_disconnect(self):
+        if self.config_viewer.has_focus:
+            return
         #Disconnect from current data source
         if self.is_connected: 
             if self.update_timer:
@@ -622,17 +602,18 @@ class DashboardLogApp(App):
     def update_data(self):    
         #Update dashboard with new data
         #self.write_log("reading update")
-        
+        global nodata
+
         if not self.is_connected:
             data = None
             self.dashboard.update_data(None)
             self.stats.update_stats(None)
-            self.err_status.update_status(None)
+            self.err_status.update_status(None, nodata)
             return
             
         data = None
         parsed_data = None
-        global nodata
+        
         # Generate or read data based on connection type
    
         while not self.queue.empty():
@@ -641,7 +622,7 @@ class DashboardLogApp(App):
                        
             if not data:
                 nodata += 1
-                self.err_status.update_status(None)
+                self.err_status.update_status(None, nodata)
                 return
             
 
@@ -654,7 +635,7 @@ class DashboardLogApp(App):
                 self.write_log(f"{data_type[1].strip()}")
                 self.dashboard.update_data(parsed_data)
                 self.stats.update_stats(parsed_data)
-                self.err_status.update_status(parsed_data)
+                self.err_status.update_status(parsed_data, nodata)
             #self.update_css(parsed_data)
             elif data_type[0] == "info":
                 self.write_log(f"{data_type[1].strip()}")
@@ -667,25 +648,66 @@ class DashboardLogApp(App):
             self.write_log(f"Data stream status: {data_stream_status}")
             self.action_disconnect()
             
-    def update_css(self, data):
-        if data is None:
-            self.err_status.styles.border("solid", "gray")
+    def action_start_race(self):
+        if self.config_viewer.has_focus:
+            return
+        if not self.race_tracker.is_racing:
+            self.race_tracker.start_race()
+            self.write_log("Race started")
+            if self.race_timer:
+                self.race_timer.stop()
+            self.race_timer = self.set_interval(0.1, self.update_race)
         else:
-            err_code = data['Di']
-            if err_code == "0x0" or err_code == "0":
-              self.err_status.styles.border("solid", "green")
-            elif err_code == "0x1" or err_code == "1":
-                self.err_status.styles.border("solid", "yellow")
-            elif err_code == "0x3" or err_code == "3":
-                self.err_status.styles.border("solid", "red")
-            elif err_code == "0x8" or err_code == "8":
-                self.err_status.styles.border("solid", "red")
-            elif err_code == "0x9" or err_code == "9":
-                self.err_status.styles.border("solid", "red")
-            elif err_code == "0xb" or err_code == "b" or err_code == "B":
-                self.err_status.styles.border("solid", "red")
-            else:
-                self.err_status.styles.border("solid", "red")
+            self.race_tracker.stop_race()
+            self.write_log("Race paused")
+            if self.race_timer:
+                self.race_timer.stop()
+    
+    def action_reset_race(self):
+        if self.config_viewer.has_focus:
+            return
+        self.race_tracker.reset_race()
+        self.write_log("Race reset")
+        if self.race_timer:
+            self.race_timer.stop()
+    
+    def action_log_hydrostick(self):
+        if self.config_viewer.has_focus:
+            return
+        c = self.race_tracker.log_stick_change()
+        if c == 0: self.write_log("Hydrogen stick changed")
+    
+    def action_log_battery(self):
+        if self.config_viewer.has_focus:
+            return
+        c = self.race_tracker.log_battery_change()
+        if c ==0: self.write_log("Battery changed")
+    
+    def update_race(self):
+        self.race_tracker.update_timer()
+    
+    def action_reload_config(self):
+        self.race_tracker.reload_race_config()
+        self.race_tracker.update_display()
 
+    def action_save_config(self):
+        """Save the current config file - only works when text editor has focus"""
+        # Check if the config viewer has focus
+        if not self.config_viewer.has_focus:
+            return
+        
+        if self.current_config_file is None:
+            self.write_log("No config file loaded")
+            return
+        
+        try:
+            content = self.config_viewer.text
+            with open(self.current_config_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+            self.write_log(f"Saved config: {os.path.basename(self.current_config_file)}")
+            self.action_reload_config()
+        except Exception as e:
+            self.write_log(f"Error saving config: {str(e)}")
+    
 if __name__ == "__main__":
     DashboardLogApp().run()
