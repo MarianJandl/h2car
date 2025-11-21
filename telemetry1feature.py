@@ -585,7 +585,7 @@ class DashboardLogApp(App):
             self.start_data_stream()
 
         elif conn_type == "serial":
-            self.data_stream = subprocess.Popen(["python", "serialcom.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)
+            self.data_stream = subprocess.Popen(["python", "serialcomfeature.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)
             self.write_log(f"{conn_type} connection to {conn_port} @ {conn_baudrate} ")
             self.start_data_stream()
         
@@ -642,7 +642,11 @@ class DashboardLogApp(App):
             data_type = data.split(":", 1)
             
             if data_type[0] == "data":
-                parsed_data = get_data(data_type[1])
+                try:
+                    parsed_data = get_data(data_type[1])
+                except Exception as e:
+                    self.write_log(f"Error parsing data: {str(e)}")
+                    return
                 self.write_log(f"{data_type[1].strip()}")
                 self.dashboard.update_data(parsed_data)
                 self.stats.update_stats(parsed_data)
