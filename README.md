@@ -43,7 +43,7 @@ to test newest features
 - Race tracker config `./config/race_config.json`
 
 ### Guide / some tips
-#### Pro zmenu souboru ktery spousti telemetry1feature.py:
+#### Pro zmenu souboru ktery cte bluetooth: spousti se z telemetry1feature.py:
 radek 588: `self.data_stream = subprocess.Popen(["python", "serialcomfeature.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)`
 zmenit nazev souboru
 
