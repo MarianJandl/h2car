@@ -5,7 +5,7 @@ import datetime
 import time
 from serial.serialutil import SerialException
 
-RECONNECT_DELAY = 3  # seconds
+RECONNECT_DELAY = 5  # seconds
 
 
 def ensure_log_dir():
@@ -41,7 +41,7 @@ def connect(port, baudrate):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python logger.py <PORT> <BAUDRATE>")
+        print("Usage: python serialcomfeature.py <PORT> <BAUDRATE>")
         sys.exit(1)
 
     port = sys.argv[1]
