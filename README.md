@@ -40,6 +40,14 @@ to test newest features
 - To reset press `ctrl+r`
 - To log hydrostick change press `ctrl+s`
 - To log battery change press `ctrl+b`
+- Race tracker config `./config/race_config.json`
+
+### Guide / some tips
+#### Pro zmenu souboru ktery spousti telemetry1feature.py:
+radek 588: `self.data_stream = subprocess.Popen(["python", "serialcomfeature.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)`
+zmenit nazev souboru
+
+
 
 ## Features
 
