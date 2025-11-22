@@ -1,6 +1,6 @@
 # Telemetry app 
 ## To do: 
-- Better documentation
+- Better documentation and guide
 - Improve race tracker calculation and connect it to incoming data
 - Pit feature in race tracker - stops battery/stick consumption
 - Redflag a tak proste kdy to jezdi a kdy je pusteny zavod nezavisle na sobe
@@ -8,6 +8,10 @@
 - logovat napomenuti
 - Racetracker resets after stop
 - procenta baterek?
+- logovat telemetry app
+- graf prumernych hodnot za 10s treba 
+
+
 
 
 ## How to use this app
