@@ -2,6 +2,13 @@
 ## To do: 
 - Better documentation
 - Improve race tracker calculation and connect it to incoming data
+- Pit feature in race tracker - stops battery/stick consumption
+- Redflag a tak proste kdy to jezdi a kdy je pusteny zavod nezavisle na sobe
+- statistics time stamps
+- logovat napomenuti
+- Racetracker resets after stop
+- procenta baterek?
+
 
 ## How to use this app
 
