@@ -383,7 +383,7 @@ class DashboardLogApp(App):
 
         ResourceMonitor {
             padding: 1;
-            height: 3;
+            height: 4;
             dock: bottom;
         }
         
@@ -611,58 +611,62 @@ class DashboardLogApp(App):
         self.update_timer = self.set_interval(1, self.update_data)
     
     def update_data(self):    
-        #Update dashboard with new data
-        #self.write_log("reading update")
-        global nodata
+        self.resource_monitor.update_resources()
+        try:
+            #Update dashboard with new data
+            #self.write_log("reading update")
+            global nodata
 
-        if not self.is_connected:
-            data = None
-            self.dashboard.update_data(None)
-            self.stats.update_stats(None)
-            self.err_status.update_status(None, nodata)
-            return
-            
-        data = None
-        parsed_data = None
-        
-        # Generate or read data based on connection type
-   
-        while not self.queue.empty():
-            
-            data = self.queue.get()
-                       
-            if not data:
-                nodata += 1
+            if not self.is_connected:
+                data = None
+                self.dashboard.update_data(None)
+                self.stats.update_stats(None)
                 self.err_status.update_status(None, nodata)
                 return
+                
+            data = None
+            parsed_data = None
             
-
-            nodata = 0
-
-            data_type = data.split(":", 1)
-            
-            if data_type[0] == "data":
-                try:
-                    parsed_data = get_data(data_type[1])
-                except Exception as e:
-                    self.write_log(f"Error parsing data: {str(e)}")
+            # Generate or read data based on connection type
+    
+            while not self.queue.empty():
+                
+                data = self.queue.get()
+                        
+                if not data:
+                    nodata += 1
+                    self.err_status.update_status(None, nodata)
                     return
-                self.write_log(f"{data_type[1].strip()}")
-                self.dashboard.update_data(parsed_data)
-                self.stats.update_stats(parsed_data)
-                self.err_status.update_status(parsed_data, nodata)
-            #self.update_css(parsed_data)
-            elif data_type[0] == "info":
-                self.write_log(f"{data_type[1].strip()}")
-                return
-            else:
-                self.write_log(f"Data in wrong format: {data}")
-                return
-        data_stream_status = self.data_stream.poll()
-        if data_stream_status is not None:
-            self.write_log(f"Data stream status: {data_stream_status}")
-            self.action_disconnect()
-            
+                
+
+                nodata = 0
+
+                data_type = data.split(":", 1)
+                
+                if data_type[0] == "data":
+                    try:
+                        parsed_data = get_data(data_type[1])
+                    except Exception as e:
+                        self.write_log(f"Error parsing data: {str(e)}")
+                        return
+                    self.write_log(f"{data_type[1].strip()}")
+                    self.dashboard.update_data(parsed_data)
+                    self.stats.update_stats(parsed_data)
+                    self.err_status.update_status(parsed_data, nodata)
+                #self.update_css(parsed_data)
+                elif data_type[0] == "info":
+                    self.write_log(f"{data_type[1].strip()}")
+                    return
+                else:
+                    self.write_log(f"Data in wrong format: {data}")
+                    return
+            data_stream_status = self.data_stream.poll()
+            if data_stream_status is not None:
+                self.write_log(f"Data stream status: {data_stream_status}")
+                self.action_disconnect()
+        except Exception as e:
+            self.write_log(f"Error in update_data: {str(e)}")        
+            return
     def action_start_race(self):
         if self.config_viewer.has_focus:
             return
