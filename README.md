@@ -10,6 +10,8 @@
 - procenta baterek?
 - logovat telemetry app
 - graf prumernych hodnot za 10s treba 
+- add battery life to resources monitor
+
 
 
 
