@@ -5,11 +5,11 @@
 - Pit feature in race tracker - stops battery/stick consumption
 - Redflag a tak proste kdy to jezdi a kdy je pusteny zavod nezavisle na sobe
 - statistics time stamps
-- logovat napomenuti
+- logovat napomenuti: Done
 - Racetracker resets after stop
 - procenta baterek?
-- logovat telemetry app
-- graf prumernych hodnot za 10s treba 
+- logovat telemetry app: Done
+- graf prumernych hodnot za 10s treba: Done vicemene
 - add battery life to resources monitor: Done
 
 
@@ -36,6 +36,7 @@ python telemetry1feature.py
 ```
 to test newest features
 
+
 ### Current newest feature:
 - Race tracker
 
@@ -55,7 +56,19 @@ to test newest features
 - To log battery change press `ctrl+b`
 - Race tracker config `./config/race_config.json`
 
+#### Command line
+- Press `m` to open the command line
+- list of commands is lower in the Guide section
+
 ### Guide / some tips
+#### Commands
+- `log` - writes to the log
+- `napomenuti` - takes one argument F (Filip) or V (Vitek)
+- `plot` - plots the data from log file, you can use these arguments:
+    - `-f / --file`: to specify log file
+    - `-l / --last`: number of last seconds you want to plot
+    - `-v / --vars`: to specify which variales to plot
+     
 #### Pro zmenu souboru ktery cte bluetooth: spousti se z telemetry1feature.py:
 radek 588: `self.data_stream = subprocess.Popen(["python", "serialcomfeature.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)`
 zmenit nazev souboru
