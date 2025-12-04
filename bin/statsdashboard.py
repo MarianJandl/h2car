@@ -12,9 +12,9 @@ class StatsDashboard(Static):
             "Pfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
             "Tfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0}
         }
-        self.update_stats(None)
+        self.update_stats(None, None, None)
     
-    def update_stats(self, data):
+    def update_stats(self, data, napomenutiF, napomenutiV):
         if data == None:
             if self.stats["Vbat"]["count"] == 0:
                 self.update(
@@ -31,6 +31,8 @@ class StatsDashboard(Static):
                     f"Max: -- W | Avg: -- W\n"
                     f"Tfc:  Min: -- °C | "
                     f"Max: -- °C | Avg: -- °C\n"
+                    f"Napomenuti Filip: {napomenutiF}\n"
+                    f"Napomenuti Vitek: {napomenutiV}\n"
                 )
             else:
                 self.update(
@@ -47,6 +49,8 @@ class StatsDashboard(Static):
                     f"Max: {self.stats['Pfc']['max']}W | Avg: -- W\n"
                     f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
                     f"Max: {self.stats['Tfc']['max']}°C | Avg: -- °C\n"
+                    f"Napomenuti Filip: {napomenutiF}\n"
+                    f"Napomenuti Vitek: {napomenutiV}\n"
                 )
         else:
             numeric_keys = ["Vbat", "Iout", "Pout", "Vfc","Pfc", "Tfc"]
@@ -74,6 +78,8 @@ class StatsDashboard(Static):
                 f"Max: {self.stats['Pfc']['max']}W | Avg: {self.stats['Pfc']['avg']:.1f}W\n"
                 f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
                 f"Max: {self.stats['Tfc']['max']}°C | Avg: {self.stats['Tfc']['avg']:.1f}°C\n"
+                f"Napomenuti Filip: {napomenutiF}\n"
+                f"Napomenuti Vitek: {napomenutiV}\n"
             )
     
     def reset_stats(self):
