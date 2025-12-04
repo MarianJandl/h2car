@@ -5,12 +5,10 @@
 - Pit feature in race tracker - stops battery/stick consumption
 - Redflag a tak proste kdy to jezdi a kdy je pusteny zavod nezavisle na sobe
 - statistics time stamps
-- logovat napomenuti: Done
 - Racetracker resets after stop
 - procenta baterek?
-- logovat telemetry app: Done
-- graf prumernych hodnot za 10s treba: Done vicemene
-- add battery life to resources monitor: Done
+- graf prumernych hodnot za 10s treba: dodelat cteni nejnovejsiho logu
+
 
 
 
