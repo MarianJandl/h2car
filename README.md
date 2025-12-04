@@ -35,7 +35,10 @@ or
 python telemetry1feature.py
 ```
 to test newest features
-
+- To update to the latest version
+```
+git pull upstream main
+```
 
 ### Current newest feature:
 - Race tracker
@@ -68,7 +71,7 @@ to test newest features
     - `-f / --file`: to specify log file
     - `-l / --last`: number of last seconds you want to plot
     - `-v / --vars`: to specify which variales to plot
-     
+
 #### Pro zmenu souboru ktery cte bluetooth: spousti se z telemetry1feature.py:
 radek 588: `self.data_stream = subprocess.Popen(["python", "serialcomfeature.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)`
 zmenit nazev souboru
