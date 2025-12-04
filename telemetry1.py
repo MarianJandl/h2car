@@ -11,6 +11,7 @@ import threading
 from queue import Queue
 import time
 import json
+import shlex
 
 from bin.connectionscreen import *
 from bin.connectionstatus import *
@@ -19,11 +20,28 @@ from bin.resourcemonitor import *
 from bin.dashboard import *
 from bin.statsdashboard import *
 from bin.errorstatus import *
+from bin.inputscreen import *
 
 di = 0
 tim = 0
 lineno = 0
 nodata = 0
+
+napomenutiF = 0
+napomenutiV = 0
+
+x = datetime.now().strftime("%Y%m%d")
+k = 0
+
+if not os.path.exists("./logs/"):
+    os.mkdir("logs")
+    
+while os.path.exists(f"./logs/appdatalog{x}_{k}.txt"):
+    k += 1
+
+with open(f"./logs/appdatalog{x}_{k}.txt", "a") as f:
+    f.write(f"--- New session started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+
 
 def get_data(data):
     data = dict(p.split(":") for p in data.split())
@@ -268,10 +286,10 @@ class RaceTracker(Static):
             race_info = self.query_one("#race_info", Static)
             race_info.update(f"""[bold cyan]Race Tracker[/bold cyan] {status}
 
-                Race: {self.config['race_name']}
-                Time: {self.format_time(self.elapsed_time)} / {self.format_time(race_duration)}
-                Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
-                """)
+Race: {self.config['race_name']}
+Time: {self.format_time(self.elapsed_time)} / {self.format_time(race_duration)}
+Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
+""")
             
             stick_label = self.query_one("#stick_label", Static)
             stick_label.update(f"[bold]Hydrogen Stick:[/bold] {self.stick_changes}/{self.config['hydrogen_stick_count']} changes ({sticks_remaining} remaining)")
@@ -364,15 +382,26 @@ class DashboardLogApp(App):
         }
 
         ErrorStatus {
-            padding: 1;
-            
-            
+            padding: 1 1 1 1;
+            height: auto;
+            max-height: 6;
             border: solid gray;
         }
 
+        #error_scroll {
+            height: auto;
+            max-height: 6;
+
+        }
+
+        #error_header {
+            padding: 0 0 1 0;
+        }
+
+
         ResourceMonitor {
             padding: 1;
-            height: 3;
+            height: 4;
             dock: bottom;
         }
         
@@ -407,6 +436,7 @@ class DashboardLogApp(App):
         Binding("ctrl+b", "log_battery", "Log Battery", show=True, priority=False),
         Binding("ctrl+l", "reload_config", "Reload Config", show=True, priority=False),
         Binding("ctrl+s", "save_config", "Save Config", show=True, priority=False),
+        Binding("m", "open_input", "Command line", show=True, priority=False),
 
     ]
     
@@ -503,16 +533,18 @@ class DashboardLogApp(App):
     def write_log(self, data):
         # Function to write to log with line number and time
         timestamp = datetime.now().strftime("%H:%M:%S")
-        global lineno
+        global lineno, x, k
         lineno += 1
         ln = str(lineno).zfill(5)
         self.data_log.write(f"{ln} {timestamp} | {data}")
+        with open(f"./logs/appdatalog{x}_{k}.txt", "a") as f:
+            f.write(f"{ln} {timestamp} | {data}\n")
 
     def action_request_quit(self):
         self.push_screen(QuitScreen(), self.actually_quit)
         
     def actually_quit(self, result):
-        self.write_log(result)
+        #self.write_log(result)
         if result is None:
             return
         else:
@@ -574,11 +606,42 @@ class DashboardLogApp(App):
             self.start_data_stream()
 
         elif conn_type == "serial":
-            self.data_stream = subprocess.Popen(["python", "serialcom.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)
+            self.data_stream = subprocess.Popen(["python", "serialcomfeature.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)
             self.write_log(f"{conn_type} connection to {conn_port} @ {conn_baudrate} ")
             self.start_data_stream()
         
-
+    def action_open_input(self):
+        """Open the input dialog to log custom message"""
+        self.push_screen(
+            InputScreen(title="Command line", placeholder="Enter command..."),
+            self.handle_input
+        )
+    
+    def handle_input(self, message):
+        """Handle the input from the dialog"""
+        if message:
+            if message.startswith("log"):
+                self.write_log(f"{message[3:].strip()}")
+            elif message.startswith("napomenuti"):
+                global napomenutiF, napomenutiV
+                if message[10:].strip().lower() == "f":
+                    napomenutiF += 1
+                    self.write_log(f"Napomenuti Filip +1 - {napomenutiF}")
+                elif message[10:].strip().lower() == "v":
+                    napomenutiV += 1
+                    self.write_log(f"Napomenuti Vitek +1 - {napomenutiV}")
+                else:
+                    return
+            elif message.startswith("plot"):
+                try:
+                    args = shlex.split(message[4:].strip())
+                    subprocess.Popen(["python", "plotdata.py"]+args, stdout=subprocess.PIPE, text=True)
+                except Exception as e:
+                    self.write_log(e)
+            else:
+                return
+        else:
+            return
     
     def start_data_stream(self):
         #Start receiving data
@@ -600,54 +663,62 @@ class DashboardLogApp(App):
         self.update_timer = self.set_interval(1, self.update_data)
     
     def update_data(self):    
-        #Update dashboard with new data
-        #self.write_log("reading update")
-        global nodata
+        self.resource_monitor.update_resources()
+        try:
+            #Update dashboard with new data
+            #self.write_log("reading update")
+            global nodata, napomenutiF, napomenutiV
 
-        if not self.is_connected:
-            data = None
-            self.dashboard.update_data(None)
-            self.stats.update_stats(None)
-            self.err_status.update_status(None, nodata)
-            return
-            
-        data = None
-        parsed_data = None
-        
-        # Generate or read data based on connection type
-   
-        while not self.queue.empty():
-            
-            data = self.queue.get()
-                       
-            if not data:
-                nodata += 1
+            if not self.is_connected:
+                data = None
+                self.dashboard.update_data(None)
+                self.stats.update_stats(None, napomenutiF, napomenutiV)
                 self.err_status.update_status(None, nodata)
                 return
+                
+            data = None
+            parsed_data = None
             
+            # Generate or read data based on connection type
+    
+            while not self.queue.empty():
+                
+                data = self.queue.get()
+                        
+                if not data:
+                    nodata += 1
+                    self.err_status.update_status(None, nodata)
+                    return
+                
 
-            nodata = 0
+                nodata = 0
 
-            data_type = data.split(":", 1)
-            
-            if data_type[0] == "data":
-                parsed_data = get_data(data_type[1])
-                self.write_log(f"{data_type[1].strip()}")
-                self.dashboard.update_data(parsed_data)
-                self.stats.update_stats(parsed_data)
-                self.err_status.update_status(parsed_data, nodata)
-            #self.update_css(parsed_data)
-            elif data_type[0] == "info":
-                self.write_log(f"{data_type[1].strip()}")
-                return
-            else:
-                self.write_log(f"Data in wrong format: {data}")
-                return
-        data_stream_status = self.data_stream.poll()
-        if data_stream_status is not None:
-            self.write_log(f"Data stream status: {data_stream_status}")
-            self.action_disconnect()
-            
+                data_type = data.split(":", 1)
+                
+                if data_type[0] == "data":
+                    try:
+                        parsed_data = get_data(data_type[1])
+                    except Exception as e:
+                        self.write_log(f"Error parsing data: {str(e)}")
+                        return
+                    self.write_log(f"{data_type[1].strip()}")
+                    self.dashboard.update_data(parsed_data)
+                    self.stats.update_stats(parsed_data, napomenutiF, napomenutiV)
+                    self.err_status.update_status(parsed_data, nodata)
+                #self.update_css(parsed_data)
+                elif data_type[0] == "info":
+                    self.write_log(f"{data_type[1].strip()}")
+                    return
+                else:
+                    self.write_log(f"Data in wrong format: {data}")
+                    return
+            data_stream_status = self.data_stream.poll()
+            if data_stream_status is not None:
+                self.write_log(f"Data stream status: {data_stream_status}")
+                self.action_disconnect()
+        except Exception as e:
+            self.write_log(f"Error in update_data: {str(e)}")        
+            return
     def action_start_race(self):
         if self.config_viewer.has_focus:
             return
@@ -689,6 +760,8 @@ class DashboardLogApp(App):
     def action_reload_config(self):
         self.race_tracker.reload_race_config()
         self.race_tracker.update_display()
+        #self.err_status.reload_config()
+        #self.write_log("Configuration reloaded")
 
     def action_save_config(self):
         """Save the current config file - only works when text editor has focus"""
