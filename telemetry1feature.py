@@ -11,6 +11,7 @@ import threading
 from queue import Queue
 import time
 import json
+import shlex
 
 from bin.connectionscreen import *
 from bin.connectionstatus import *
@@ -19,11 +20,28 @@ from bin.resourcemonitor import *
 from bin.dashboard import *
 from bin.statsdashboard import *
 from bin.errorstatus import *
+from bin.inputscreen import *
 
 di = 0
 tim = 0
 lineno = 0
 nodata = 0
+
+napomenutiF = 0
+napomenutiV = 0
+
+x = datetime.now().strftime("%Y%m%d")
+k = 0
+
+if not os.path.exists("./logs/"):
+    os.mkdir("logs")
+    
+while os.path.exists(f"./logs/appdatalog{x}_{k}.txt"):
+    k += 1
+
+with open(f"./logs/appdatalog{x}_{k}.txt", "a") as f:
+    f.write(f"--- New session started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+
 
 def get_data(data):
     data = dict(p.split(":") for p in data.split())
@@ -418,6 +436,7 @@ class DashboardLogApp(App):
         Binding("ctrl+b", "log_battery", "Log Battery", show=True, priority=False),
         Binding("ctrl+l", "reload_config", "Reload Config", show=True, priority=False),
         Binding("ctrl+s", "save_config", "Save Config", show=True, priority=False),
+        Binding("m", "open_input", "Command line", show=True, priority=False),
 
     ]
     
@@ -514,16 +533,18 @@ class DashboardLogApp(App):
     def write_log(self, data):
         # Function to write to log with line number and time
         timestamp = datetime.now().strftime("%H:%M:%S")
-        global lineno
+        global lineno, x, k
         lineno += 1
         ln = str(lineno).zfill(5)
         self.data_log.write(f"{ln} {timestamp} | {data}")
+        with open(f"./logs/appdatalog{x}_{k}.txt", "a") as f:
+            f.write(f"{ln} {timestamp} | {data}\n")
 
     def action_request_quit(self):
         self.push_screen(QuitScreen(), self.actually_quit)
         
     def actually_quit(self, result):
-        self.write_log(result)
+        #self.write_log(result)
         if result is None:
             return
         else:
@@ -589,7 +610,38 @@ class DashboardLogApp(App):
             self.write_log(f"{conn_type} connection to {conn_port} @ {conn_baudrate} ")
             self.start_data_stream()
         
-
+    def action_open_input(self):
+        """Open the input dialog to log custom message"""
+        self.push_screen(
+            InputScreen(title="Command line", placeholder="Enter command..."),
+            self.handle_input
+        )
+    
+    def handle_input(self, message):
+        """Handle the input from the dialog"""
+        if message:
+            if message.startswith("log"):
+                self.write_log(f"{message[3:].strip()}")
+            elif message.startswith("napomenuti"):
+                global napomenutiF, napomenutiV
+                if message[10:].strip().lower() == "f":
+                    napomenutiF += 1
+                    self.write_log(f"Napomenuti Filip +1 - {napomenutiF}")
+                elif message[10:].strip().lower() == "v":
+                    napomenutiV += 1
+                    self.write_log(f"Napomenuti Vitek +1 - {napomenutiV}")
+                else:
+                    return
+            elif message.startswith("plot"):
+                try:
+                    args = shlex.split(message[4:].strip())
+                    subprocess.Popen(["python", "plotdata.py"]+args, stdout=subprocess.PIPE, text=True)
+                except Exception as e:
+                    self.write_log(e)
+            else:
+                return
+        else:
+            return
     
     def start_data_stream(self):
         #Start receiving data
@@ -615,12 +667,12 @@ class DashboardLogApp(App):
         try:
             #Update dashboard with new data
             #self.write_log("reading update")
-            global nodata
+            global nodata, napomenutiF, napomenutiV
 
             if not self.is_connected:
                 data = None
                 self.dashboard.update_data(None)
-                self.stats.update_stats(None)
+                self.stats.update_stats(None, napomenutiF, napomenutiV)
                 self.err_status.update_status(None, nodata)
                 return
                 
@@ -651,7 +703,7 @@ class DashboardLogApp(App):
                         return
                     self.write_log(f"{data_type[1].strip()}")
                     self.dashboard.update_data(parsed_data)
-                    self.stats.update_stats(parsed_data)
+                    self.stats.update_stats(parsed_data, napomenutiF, napomenutiV)
                     self.err_status.update_status(parsed_data, nodata)
                 #self.update_css(parsed_data)
                 elif data_type[0] == "info":
