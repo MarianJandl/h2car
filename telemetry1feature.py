@@ -626,7 +626,7 @@ class DashboardLogApp(App):
                 global napomenutiF, napomenutiV
                 args = message.split()
                 try:
-                    if args[1].lower("v"):
+                    if args[1].lower() == "v":
                         if args[2] == "+":
                             try:
                                 napomenutiV += int(args[3])
@@ -639,7 +639,7 @@ class DashboardLogApp(App):
                             except Exception as e:
                                 self.write_log(e)
                                 return
-                    elif args[1].lower("f"):
+                    elif args[1].lower() == "f":
                         if args[2] == "+":
                             try:
                                 napomenutiF += int(args[3])
