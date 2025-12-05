@@ -86,7 +86,7 @@ class InputScreen(ModalScreen):
                 yield Static("[bold green]>[/bold green]", id="prompt")
                 yield Input(placeholder="Type command and press Enter...", id="user_input")
             yield Static(
-                "[dim]↑/↓: History | Enter: Submit | Esc: Cancel | Commands: log, note, stick, battery[/dim]",
+                "[dim]↑/↓: History | Enter: Submit | Esc: Cancel [/dim]",
                 id="help_text"
             )
     
