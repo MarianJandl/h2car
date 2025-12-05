@@ -20,7 +20,7 @@ from bin.resourcemonitor import *
 from bin.dashboard import *
 from bin.statsdashboard import *
 from bin.errorstatus import *
-from bin.inputscreen import *
+from bin.inputscreenfeature import *
 
 di = 0
 tim = 0
@@ -649,7 +649,7 @@ class DashboardLogApp(App):
     def action_open_input(self):
         """Open the input dialog to log custom message"""
         self.push_screen(
-            InputScreen(title="Command line", placeholder="Enter command..."),
+            InputScreen(title="Command line"),
             self.handle_input
         )
     
@@ -869,6 +869,6 @@ class DashboardLogApp(App):
             self.action_reload_config()
         except Exception as e:
             self.write_log(f"Error saving config: {str(e)}")
-            
+
 if __name__ == "__main__":
     DashboardLogApp().run()
