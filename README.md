@@ -5,13 +5,8 @@
 - Pit feature in race tracker - stops battery/stick consumption
 - Redflag a tak proste kdy to jezdi a kdy je pusteny zavod nezavisle na sobe
 - statistics time stamps
-- Racetracker resets after stop
 - procenta baterek?
-- graf prumernych hodnot za 10s treba: dodelat cteni nejnovejsiho logu
 - MAKE IT MORE CLEAN
-
-
-
 
 
 
@@ -65,7 +60,11 @@ git pull upstream main
 ### Guide / some tips
 #### Commands
 - `log` - writes to the log
-- `napomenuti` - takes one argument F (Filip) or V (Vitek)
+- `n` - used to log warnings:
+    - Syntax: `n [name] [operation] [amount]`
+    - name: v or f
+    - operation: +/-
+    - amount: how many warnings to add/remove
 - `plot` - plots the data from log file, you can use these arguments:
     - `-f / --file`: to specify log file
     - `-l / --last`: number of last seconds you want to plot
@@ -88,4 +87,4 @@ zmenit nazev souboru
 - Docs tab to view documentation files from docs/ directory
 - Error status with suggested solution
 - Variety of color themes
-
+- And many more
