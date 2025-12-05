@@ -8,6 +8,7 @@
 - Racetracker resets after stop
 - procenta baterek?
 - graf prumernych hodnot za 10s treba: dodelat cteni nejnovejsiho logu
+- MAKE IT MORE CLEAN
 
 
 
