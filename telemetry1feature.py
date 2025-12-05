@@ -620,19 +620,43 @@ class DashboardLogApp(App):
     def handle_input(self, message):
         """Handle the input from the dialog"""
         if message:
-            if message.startswith("log"):
+            if message.startswith("log "):
                 self.write_log(f"{message[3:].strip()}")
-            elif message.startswith("napomenuti"):
+            elif message.startswith("n "):
                 global napomenutiF, napomenutiV
-                if message[10:].strip().lower() == "f":
-                    napomenutiF += 1
-                    self.write_log(f"Napomenuti Filip +1 - {napomenutiF}")
-                elif message[10:].strip().lower() == "v":
-                    napomenutiV += 1
-                    self.write_log(f"Napomenuti Vitek +1 - {napomenutiV}")
-                else:
-                    return
-            elif message.startswith("plot"):
+                args = message.split()
+                try:
+                    if args[1].lower("v"):
+                        if args[2] == "+":
+                            try:
+                                napomenutiV += int(args[3])
+                            except Exception as e:
+                                self.write_log(e)
+                                return
+                        if args[2] == "-":
+                            try:
+                                napomenutiV -= int(args[3])
+                            except Exception as e:
+                                self.write_log(e)
+                                return
+                    elif args[1].lower("f"):
+                        if args[2] == "+":
+                            try:
+                                napomenutiF += int(args[3])
+                            except Exception as e:
+                                self.write_log(e)
+                                return
+                        if args[2] == "-":
+                            try:
+                                napomenutiF -= int(args[3])
+                            except Exception as e:
+                                self.write_log(e)
+                                return
+                    else:
+                        self.write_log(f"unknown name {args[1]}")
+                except Exception as e:
+                    self.write_log(e)
+            elif message.startswith("plot "):
                 try:
                     args = shlex.split(message[4:].strip())
                     subprocess.Popen(["python", "plotdata.py"]+args, stdout=subprocess.PIPE, text=True)
