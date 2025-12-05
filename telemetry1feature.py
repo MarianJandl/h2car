@@ -80,7 +80,10 @@ class RaceTracker(Static):
         self.config = load_race_config()
         self.race_start_time = None
         self.is_racing = False
+        self.is_paused = False
         self.elapsed_time = 0
+        self.pause_start_time = None
+        self.total_pause_duration = 0
         self.stick_changes = 0
         self.battery_changes = 0
         
@@ -116,7 +119,7 @@ class RaceTracker(Static):
         self.battery_interval = self.config["race_duration_seconds"] / self.config["battery_count"]
         
         # If racing, recalculate current intervals based on remaining items
-        if self.is_racing:
+        if self.is_racing and not self.is_paused:
             sticks_remaining = self.config["hydrogen_stick_count"] - self.stick_changes
             batteries_remaining = self.config["battery_count"] - self.battery_changes
             time_remaining = self.config["race_duration_seconds"] - self.elapsed_time
@@ -130,9 +133,13 @@ class RaceTracker(Static):
             self.current_battery_interval = self.battery_interval
 
     def start_race(self):
+        """Start the race from the beginning"""
         self.race_start_time = time.time()
         self.is_racing = True
+        self.is_paused = False
         self.elapsed_time = 0
+        self.total_pause_duration = 0
+        self.pause_start_time = None
         self.stick_changes = 0
         self.battery_changes = 0
         self.last_stick_change_time = 0
@@ -140,13 +147,33 @@ class RaceTracker(Static):
         self.current_stick_interval = self.stick_interval
         self.current_battery_interval = self.battery_interval
     
+    def pause_race(self):
+        """Pause the race"""
+        if self.is_racing and not self.is_paused:
+            self.is_paused = True
+            self.pause_start_time = time.time()
+    
+    def resume_race(self):
+        """Resume the race from pause"""
+        if self.is_racing and self.is_paused:
+            self.is_paused = False
+            # Add the pause duration to total
+            if self.pause_start_time:
+                self.total_pause_duration += time.time() - self.pause_start_time
+                self.pause_start_time = None
+    
     def stop_race(self):
-        self.is_racing = False
+        """Stop/pause the race (alias for pause)"""
+        self.pause_race()
     
     def reset_race(self):
+        """Reset the race completely"""
         self.race_start_time = None
         self.is_racing = False
+        self.is_paused = False
         self.elapsed_time = 0
+        self.total_pause_duration = 0
+        self.pause_start_time = None
         self.stick_changes = 0
         self.battery_changes = 0
         self.last_stick_change_time = 0
@@ -156,7 +183,7 @@ class RaceTracker(Static):
         self.update_display()
     
     def log_stick_change(self):
-        if not self.is_racing:
+        if not self.is_racing or self.is_paused:
             return 1
         
         # Check if we've reached the limit
@@ -176,7 +203,7 @@ class RaceTracker(Static):
         return 0
     
     def log_battery_change(self):
-        if not self.is_racing:
+        if not self.is_racing or self.is_paused:
             return 1
         
         # Check if we've reached the limit
@@ -197,7 +224,9 @@ class RaceTracker(Static):
     
     def update_timer(self):
         if self.is_racing and self.race_start_time:
-            self.elapsed_time = time.time() - self.race_start_time
+            if not self.is_paused:
+                # Calculate elapsed time excluding all pause durations
+                self.elapsed_time = time.time() - self.race_start_time - self.total_pause_duration
             self.update_display()
     
     def format_time(self, seconds):
@@ -238,7 +267,11 @@ class RaceTracker(Static):
             sticks_remaining = self.config["hydrogen_stick_count"] - self.stick_changes
             batteries_remaining = self.config["battery_count"] - self.battery_changes
             
-            status = "[green]● RACING[/green]"
+            # Set status based on pause state
+            if self.is_paused:
+                status = "[yellow]⏸ PAUSED[/yellow]"
+            else:
+                status = "[green]● RACING[/green]"
             
             # Update progress bars
             stick_bar = self.query_one("#stick_progress", ProgressBar)
@@ -282,6 +315,12 @@ class RaceTracker(Static):
             elif battery_remaining_percent < 25:
                 battery_status = " [yellow]Change soon[/yellow]"
             
+            # Build keyboard shortcuts hint
+            if self.is_paused:
+                shortcuts = "Press [bold]P[/bold] to resume | Press [bold]Shift+R[/bold] to reset"
+            else:
+                shortcuts = "Press [bold]P[/bold] to pause | Press [bold]Shift+R[/bold] to reset"
+            
             # Update text displays
             race_info = self.query_one("#race_info", Static)
             race_info.update(f"""[bold cyan]Race Tracker[/bold cyan] {status}
@@ -289,6 +328,8 @@ class RaceTracker(Static):
 Race: {self.config['race_name']}
 Time: {self.format_time(self.elapsed_time)} / {self.format_time(race_duration)}
 Remaining: {self.format_time(time_remaining)} ({100-race_progress:.1f}%)
+
+{shortcuts}
 """)
             
             stick_label = self.query_one("#stick_label", Static)
@@ -337,7 +378,6 @@ Press [bold]R[/bold] to start race | Press [bold]Shift+R[/bold] to reset
             battery_bar = self.query_one("#battery_progress", ProgressBar)
             stick_bar.update(progress=100)
             battery_bar.update(progress=100)
-
 
 class FilteredDirectoryTreeDocs(DirectoryTree):
     def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
@@ -431,13 +471,13 @@ class DashboardLogApp(App):
         Binding("ctrl+d", "disconnect", "Disconnect", show=True, priority=False),
         Binding("ctrl+q", "request_quit", "Quit", show=True, priority=False),
         Binding("r", "start_race", "Start Race", show=True, priority=False),
+        Binding("p", "pause_resume_race", "Pause/Resume", show=True, priority=False),
         Binding("ctrl+r", "reset_race", "Reset Race", show=True, priority=False),
         Binding("h", "log_hydrostick", "Log Hydrostick", show=True, priority=True),
         Binding("ctrl+b", "log_battery", "Log Battery", show=True, priority=False),
         Binding("ctrl+l", "reload_config", "Reload Config", show=True, priority=False),
         Binding("ctrl+s", "save_config", "Save Config", show=True, priority=False),
         Binding("m", "open_input", "Command line", show=True, priority=False),
-
     ]
     
     def __init__(self):
@@ -459,8 +499,6 @@ class DashboardLogApp(App):
             with TabPane("Dashboard & Log", id="tab_dashboard"):
                 with Grid(id="main_grid"):
                     with Vertical():
-                        
-
                         self.conn_status = ConnectionStatus()
                         yield self.conn_status
                         
@@ -472,22 +510,25 @@ class DashboardLogApp(App):
 
                         self.stats = StatsDashboard()
                         yield self.stats
+                        
                         self.race_tracker = RaceTracker()
                         yield self.race_tracker
 
                         self.resource_monitor = ResourceMonitor()
                         yield self.resource_monitor
+                        
                     self.data_log = RichLog(highlight=False, markup=True)
                     yield self.data_log
+                    
             with TabPane("Docs", id="tab_docs"):
                 with Grid(id="docs_grid"):
                     self.directory_tree = FilteredDirectoryTreeDocs("./", id="doc_tree")
-                   
                     yield self.directory_tree
 
                     self.markdown_viewer = MarkdownViewer("# Documentation\n\nSelect a markdown file from the directory tree to view it here.", show_table_of_contents=True)
                     self.markdown_viewer.code_indent_guides = False
                     yield self.markdown_viewer
+                    
             with TabPane("Config", id="tab_config"):
                 with Grid(id="config_grid"):
                     self.config_tree = FilteredDirectoryTreeConfig("./config", id="config_tree")
@@ -508,7 +549,7 @@ class DashboardLogApp(App):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                     self.config_viewer.load_text(content)
-                    self.current_config_file = file_path  # Add this line
+                    self.current_config_file = file_path
             except Exception as e:
                 self.config_viewer.load_text(f"# Error loading file: {str(e)}")
 
@@ -521,8 +562,8 @@ class DashboardLogApp(App):
             except Exception as e:
                 error_msg = f"# Error\n\nCould not load file: {file_path}\n\nError: {str(e)}"
                 self.markdown_viewer.document.update(error_msg)
+                
     def reader_thread(self, stream, q, stop_event):
-   
         while not stop_event.is_set():
             line = stream.readline()
             if line:
@@ -544,12 +585,10 @@ class DashboardLogApp(App):
         self.push_screen(QuitScreen(), self.actually_quit)
         
     def actually_quit(self, result):
-        #self.write_log(result)
         if result is None:
             return
         else:
             self.action_disconnect()
-
             if self.data_stream != None:
                 self.data_stream.terminate()
             self.exit()
@@ -566,7 +605,6 @@ class DashboardLogApp(App):
     def action_disconnect(self):
         if self.config_viewer.has_focus:
             return
-        #Disconnect from current data source
         if self.is_connected: 
             if self.update_timer:
                 self.update_timer.stop()
@@ -588,10 +626,8 @@ class DashboardLogApp(App):
             while not self.queue.empty():
                 self.queue.get()
             self.stop_event.clear()
-            #self.update_data()
     
     def handle_connection(self, config):
-        #Handle the connection configuration from the dialog
         if config is None:
             return
         
@@ -599,12 +635,12 @@ class DashboardLogApp(App):
         self.conn_status.update_status("Connecting")
         
         conn_type = config.get("type")
-        conn_port= config.get("port")
+        conn_port = config.get("port")
         conn_baudrate = config.get("baudrate")
+        
         if conn_type == "simulated":
             self.data_stream = subprocess.Popen(["python", "simulation_data.py"], stdout=subprocess.PIPE, text=True)
             self.start_data_stream()
-
         elif conn_type == "serial":
             self.data_stream = subprocess.Popen(["python", "serialcomfeature.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)
             self.write_log(f"{conn_type} connection to {conn_port} @ {conn_baudrate} ")
@@ -668,10 +704,9 @@ class DashboardLogApp(App):
             return
     
     def start_data_stream(self):
-        #Start receiving data
-
         self.is_connected = True
         self.conn_status.update_status("Connected", self.connection_config)
+        
         if self.connection_config.get("type") == "simulated":
             self.write_log("Connected successfully to stdout of simulation_data.py script")
         elif self.connection_config.get("type") == "serial":
@@ -681,7 +716,6 @@ class DashboardLogApp(App):
         self.read_thread = threading.Thread(target=self.reader_thread, args=(self.data_stream.stdout, self.queue, self.stop_event), daemon=True)
         self.read_thread.start()
         
-        # Start the update timer
         if self.update_timer:
             self.update_timer.stop()
         self.update_timer = self.set_interval(1, self.update_data)
@@ -689,8 +723,6 @@ class DashboardLogApp(App):
     def update_data(self):    
         self.resource_monitor.update_resources()
         try:
-            #Update dashboard with new data
-            #self.write_log("reading update")
             global nodata, napomenutiF, napomenutiV
 
             if not self.is_connected:
@@ -702,21 +734,16 @@ class DashboardLogApp(App):
                 
             data = None
             parsed_data = None
-            
-            # Generate or read data based on connection type
     
             while not self.queue.empty():
-                
                 data = self.queue.get()
                         
                 if not data:
                     nodata += 1
                     self.err_status.update_status(None, nodata)
                     return
-                
 
                 nodata = 0
-
                 data_type = data.split(":", 1)
                 
                 if data_type[0] == "data":
@@ -729,13 +756,13 @@ class DashboardLogApp(App):
                     self.dashboard.update_data(parsed_data)
                     self.stats.update_stats(parsed_data, napomenutiF, napomenutiV)
                     self.err_status.update_status(parsed_data, nodata)
-                #self.update_css(parsed_data)
                 elif data_type[0] == "info":
                     self.write_log(f"{data_type[1].strip()}")
                     return
                 else:
                     self.write_log(f"Data in wrong format: {data}")
                     return
+                    
             data_stream_status = self.data_stream.poll()
             if data_stream_status is not None:
                 self.write_log(f"Data stream status: {data_stream_status}")
@@ -743,22 +770,55 @@ class DashboardLogApp(App):
         except Exception as e:
             self.write_log(f"Error in update_data: {str(e)}")        
             return
+            
     def action_start_race(self):
+        """Start or resume the race"""
         if self.config_viewer.has_focus:
             return
+            
         if not self.race_tracker.is_racing:
+            # Starting a new race
             self.race_tracker.start_race()
             self.write_log("Race started")
             if self.race_timer:
                 self.race_timer.stop()
             self.race_timer = self.set_interval(0.1, self.update_race)
+        elif self.race_tracker.is_paused:
+            # Resuming from pause
+            self.race_tracker.resume_race()
+            self.write_log("Race resumed")
+            if self.race_timer:
+                self.race_timer.stop()
+            self.race_timer = self.set_interval(0.1, self.update_race)
         else:
-            self.race_tracker.stop_race()
+            # Already racing, do nothing or show message
+            self.write_log("Race already in progress")
+    
+    def action_pause_resume_race(self):
+        """Toggle pause/resume for the race"""
+        if self.config_viewer.has_focus:
+            return
+            
+        if not self.race_tracker.is_racing:
+            self.write_log("No race in progress to pause")
+            return
+            
+        if self.race_tracker.is_paused:
+            # Resume the race
+            self.race_tracker.resume_race()
+            self.write_log("Race resumed")
+            if self.race_timer:
+                self.race_timer.stop()
+            self.race_timer = self.set_interval(0.1, self.update_race)
+        else:
+            # Pause the race
+            self.race_tracker.pause_race()
             self.write_log("Race paused")
             if self.race_timer:
                 self.race_timer.stop()
     
     def action_reset_race(self):
+        """Reset the race completely"""
         if self.config_viewer.has_focus:
             return
         self.race_tracker.reset_race()
@@ -767,29 +827,33 @@ class DashboardLogApp(App):
             self.race_timer.stop()
     
     def action_log_hydrostick(self):
+        """Log a hydrogen stick change"""
         if self.config_viewer.has_focus:
             return
         c = self.race_tracker.log_stick_change()
-        if c == 0: self.write_log("Hydrogen stick changed")
+        if c == 0:
+            self.write_log("Hydrogen stick changed")
     
     def action_log_battery(self):
+        """Log a battery change"""
         if self.config_viewer.has_focus:
             return
         c = self.race_tracker.log_battery_change()
-        if c ==0: self.write_log("Battery changed")
+        if c == 0:
+            self.write_log("Battery changed")
     
     def update_race(self):
+        """Update the race timer display"""
         self.race_tracker.update_timer()
     
     def action_reload_config(self):
+        """Reload the race configuration"""
         self.race_tracker.reload_race_config()
         self.race_tracker.update_display()
-        #self.err_status.reload_config()
-        #self.write_log("Configuration reloaded")
+        self.write_log("Race configuration reloaded")
 
     def action_save_config(self):
         """Save the current config file - only works when text editor has focus"""
-        # Check if the config viewer has focus
         if not self.config_viewer.has_focus:
             return
         
@@ -805,6 +869,6 @@ class DashboardLogApp(App):
             self.action_reload_config()
         except Exception as e:
             self.write_log(f"Error saving config: {str(e)}")
-    
+            
 if __name__ == "__main__":
     DashboardLogApp().run()
