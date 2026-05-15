@@ -2,7 +2,17 @@ import re
 import pandas as pd
 import matplotlib.pyplot as plt
 import argparse
+import os
+import glob
 
+
+
+def find_newest_log():
+    files = glob.glob("logs/rawdatalog*.txt")
+    newest = max(files, key=os.path.getmtime)
+
+    print("Newest log:", newest)
+    return newest
 def parse_log_file(path):
     rows = []
 
@@ -54,10 +64,11 @@ def plot_variables_subplots(df, variables, last_n=None):
 
 
 if __name__ == "__main__":
+    find_newest_log()
     parser = argparse.ArgumentParser(description="Plot log file data.")
 
     parser.add_argument("--file", "-f", type=str,
-                        default="logs/simrawdatalog20251204_9.txt",
+                        default=find_newest_log(),
                         help="Path to log file")
 
     parser.add_argument("--last", "-l", type=int, default=None,
