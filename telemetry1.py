@@ -651,7 +651,7 @@ class DashboardLogApp(App):
         if self.connection_config.get("type") == "simulated":
             self.write_log("Connected successfully to stdout of simulation_data.py script")
         elif self.connection_config.get("type") == "serial":
-            self.write_log("Connected successfully to stdout of serialcom.py script")
+            self.write_log("Connected successfully to stdout of serialcomfeature.py script")
         
         self.stop_event = threading.Event()
         self.read_thread = threading.Thread(target=self.reader_thread, args=(self.data_stream.stdout, self.queue, self.stop_event), daemon=True)
@@ -682,15 +682,12 @@ class DashboardLogApp(App):
             # Generate or read data based on connection type
     
             while not self.queue.empty():
-                
-                data = self.queue.get()
-                        
+                data = self.queue.get()    
                 if not data:
                     nodata += 1
                     self.err_status.update_status(None, nodata)
                     return
                 
-
                 nodata = 0
 
                 data_type = data.split(":", 1)

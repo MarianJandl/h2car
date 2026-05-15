@@ -73,7 +73,7 @@ class ConnectionScreen(ModalScreen):
 
                 ],
                 id="connection_type",
-                value="simulated"
+                value="serial"
             )
             # Add visibility: hidden by default
             with Container(id="serial_settings", classes="hidden"):
@@ -89,7 +89,7 @@ class ConnectionScreen(ModalScreen):
                         ("115200", "115200"),
                     ],
                     id="baudrate",
-                    value="9600"
+                    value="115200"
                 )
             with Container(id="button_container"):
                 yield Button("Connect", variant="primary", id="connect")
