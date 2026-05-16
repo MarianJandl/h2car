@@ -11,7 +11,7 @@ import threading
 from queue import Queue
 import time
 import json
-import shlex
+from shlex import split
 
 from bin.connectionscreen import *
 from bin.connectionstatus import *
@@ -480,6 +480,8 @@ class DashboardLogApp(App):
         Binding("m", "open_input", "Command line", show=True, priority=False),
     ]
     
+    
+
     def __init__(self):
         super().__init__()
         self.is_connected = False
@@ -517,7 +519,7 @@ class DashboardLogApp(App):
                         self.resource_monitor = ResourceMonitor()
                         yield self.resource_monitor
                         
-                    self.data_log = RichLog(highlight=False, markup=True)
+                    self.data_log = RichLog(highlight=False, markup=True, max_lines=150)
                     yield self.data_log
                     
             with TabPane("Docs", id="tab_docs"):
@@ -572,14 +574,14 @@ class DashboardLogApp(App):
                 time.sleep(0.05)     
 
     def write_log(self, data):
-        # Function to write to log with line number and time
         timestamp = datetime.now().strftime("%H:%M:%S")
         global lineno, x, k
         lineno += 1
         ln = str(lineno).zfill(5)
-        self.data_log.write(f"{ln} {timestamp} | {data}")
+        line = f"{ln} {timestamp} | {data}"
+        self.data_log.write(line)
         with open(f"./logs/appdatalog{x}_{k}.txt", "a") as f:
-            f.write(f"{ln} {timestamp} | {data}\n")
+            f.write(line + "\n")
 
     def action_request_quit(self):
         self.push_screen(QuitScreen(), self.actually_quit)
@@ -650,10 +652,10 @@ class DashboardLogApp(App):
         """Open the input dialog to log custom message"""
         self.push_screen(
             InputScreen(title="Command line"),
-            self.handle_input
+            self.handle_command
         )
     
-    def handle_input(self, message):
+    def handle_command(self, message):
         """Handle the input from the dialog"""
         if message:
             if message.startswith("log "):
@@ -694,7 +696,7 @@ class DashboardLogApp(App):
                     self.write_log(e)
             elif message.startswith("plot "):
                 try:
-                    args = shlex.split(message[4:].strip())
+                    args = split(message[4:].strip())
                     subprocess.Popen(["python", "plotdata.py"]+args, stdout=subprocess.PIPE, text=True)
                 except Exception as e:
                     self.write_log(e)
@@ -715,7 +717,7 @@ class DashboardLogApp(App):
         self.stop_event = threading.Event()
         self.read_thread = threading.Thread(target=self.reader_thread, args=(self.data_stream.stdout, self.queue, self.stop_event), daemon=True)
         self.read_thread.start()
-        
+        self.write_log("Started reader thread for incoming data")
         if self.update_timer:
             self.update_timer.stop()
         self.update_timer = self.set_interval(1, self.update_data)

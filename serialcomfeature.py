@@ -40,7 +40,7 @@ def connect(port, baudrate):
 
 
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) != 3:
         print("Usage: python serialcomfeature.py <PORT> <BAUDRATE>")
         sys.exit(1)
 
@@ -63,6 +63,7 @@ def main():
                 if ser is None:
                     print(f"info:Retrying in {RECONNECT_DELAY} seconds...")
                     time.sleep(RECONNECT_DELAY)
+                    sys.stdout.flush()
                     continue  # try again
 
             try:

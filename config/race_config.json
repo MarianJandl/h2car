@@ -1,6 +1,6 @@
 {
-  "race_duration_seconds": 11580,
-  "hydrogen_stick_count":14,
+  "race_duration_seconds": 14400,
+  "hydrogen_stick_count":17,
   "battery_count": 3,
   "race_name": "Kutna hora",
   "enable_alerts": true,
