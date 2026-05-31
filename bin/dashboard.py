@@ -8,9 +8,6 @@ class Dashboard(Static):
     def update_data(self, data):
         if data is None:
             self.update(
-                "[bold cyan]Dashboard[/bold cyan]\n\n"
-                #"[dim]No data[/dim]\n"
-                #"Error code: --\n"
                 "Napeti na baterce: -- V\n"
                 "Proud do menice motoru: -- A\n"
                 "Vykon menice motoru: -- W\n"
@@ -21,8 +18,6 @@ class Dashboard(Static):
             )
         else:
             self.update(
-                "[bold cyan]Dashboard[/bold cyan]\n\n"
-                #f"Error code: {data['Di']}\n"
                 f"Napeti na baterce: {data['Vbat']} V\n"
                 f"Proud do menice motoru: {data['Iout']} A\n"
                 f"Vykon menice motoru: {data['Pout']} W\n"

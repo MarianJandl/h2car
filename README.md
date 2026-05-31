@@ -16,19 +16,14 @@
 ```
 git clone https://github.com/MarianJandl/h2car
 ```
-- Install requirments:
+- Install requirements:
 ```
-pip install -r requirments.txt
+pip install -r requirements.txt
 ```
 - Run the app:
 ```
-python telemetry1.py
+python telemetry.py
 ```
-or
-```
-python telemetry1feature.py
-```
-to test newest features
 - To update to the latest version
 ```
 git pull upstream main
@@ -70,9 +65,11 @@ git pull upstream main
     - `-l / --last`: number of last seconds you want to plot
     - `-v / --vars`: to specify which variales to plot
 
-#### Pro zmenu souboru ktery cte bluetooth: spousti se z telemetry1feature.py:
-radek 588: `self.data_stream = subprocess.Popen(["python", "serialcomfeature.py", conn_port, conn_baudrate], stdout=subprocess.PIPE, text=True)`
-zmenit nazev souboru
+#### Data sources
+The serial/simulated data readers now run in-process (no separate Python
+process is spawned). To change how data is read, edit `bin/datasource.py`
+(`SerialSource` / `SimulatedSource`); the app selects between them in
+`handle_connection` in `telemetry.py`.
 
 
 

@@ -1,0 +1,9 @@
+# Runtime dependencies
+psutil
+textual
+pyserial
+pandas
+matplotlib
+
+# Dev only (Textual devtools: `textual run --dev`, `textual console`)
+textual-dev

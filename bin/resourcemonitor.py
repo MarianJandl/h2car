@@ -5,11 +5,15 @@ class ResourceMonitor(Static):
     def __init__(self):
         super().__init__()
         self.process = psutil.Process()
+        # Prime the non-blocking CPU measurement (first call always returns 0.0).
+        self.process.cpu_percent(interval=None)
         self.update_resources()
-    
+
     def update_resources(self):
         try:
-            cpu_percent = self.process.cpu_percent(interval=0.1)    
+            # interval=None measures since the previous call, so it never blocks
+            # the UI event loop (interval=0.1 used to stall it 100 ms every tick).
+            cpu_percent = self.process.cpu_percent(interval=None)
             memory_info = self.process.memory_info()
             battery = psutil.sensors_battery()
             memory_mb = memory_info.rss / 1024 / 1024

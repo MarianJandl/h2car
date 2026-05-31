@@ -64,7 +64,6 @@ def plot_variables_subplots(df, variables, last_n=None):
 
 
 if __name__ == "__main__":
-    find_newest_log()
     parser = argparse.ArgumentParser(description="Plot log file data.")
 
     parser.add_argument("--file", "-f", type=str,

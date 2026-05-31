@@ -8,13 +8,13 @@
 ```
 git clone https://github.com/MarianJandl/h2car
 ```
-- Install requirments:
+- Install requirements:
 ```
-pip install -r requirments.txt
+pip install -r requirements.txt
 ```
-- Run the app;
+- Run the app:
 ```
-python telemetry1.py
+python telemetry.py
 ```
 
 - To connect to a device press `c` and choose between simulation data for debugging or serial option where you specify the port and baudrate of the device.

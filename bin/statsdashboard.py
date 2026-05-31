@@ -1,91 +1,57 @@
 from textual.widgets import Static
 
+NUMERIC_KEYS = ["Vbat", "Iout", "Pout", "Vfc", "Pfc", "Tfc"]
+
+
 class StatsDashboard(Static):
     def __init__(self):
         super().__init__()
-        
         self.stats = {
-            "Vbat": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Iout": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Pout": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Vfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Pfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0},
-            "Tfc": {"min": float('inf'), "max": float('-inf'), "avg": 0, "count": 0, "sum": 0}
+            key: {"min": float("inf"), "max": float("-inf"), "avg": 0, "count": 0, "sum": 0}
+            for key in NUMERIC_KEYS
         }
         self.update_stats(None, None, None)
-    
+
+    def _fmt(self, key, field, suffix, decimals=2):
+        """Format one stat field, or '--' when no samples have been seen yet."""
+        if self.stats[key]["count"] == 0:
+            return f"-- {suffix}"
+        return f"{self.stats[key][field]:.{decimals}f}{suffix}"
+
     def update_stats(self, data, napomenutiF, napomenutiV):
-        if data == None:
-            if self.stats["Vbat"]["count"] == 0:
-                self.update(
-                    f"[bold cyan]Statistics[/bold cyan]\n\n"
-                    f"Vbat: Min: -- V | "
-                    f"Max: -- V | Avg: -- V\n"
-                    f"Iout: Min: -- A | "
-                    f"Max: -- A | Avg: -- A\n"
-                    f"Pout: Min: -- W | "
-                    f"Max: -- W | Avg: -- W\n"
-                    f"Vfc:  Min: -- V | "
-                    f"Max: -- V | Avg: -- V\n"
-                    f"Pfc:  Min: -- W | "
-                    f"Max: -- W | Avg: -- W\n"
-                    f"Tfc:  Min: -- °C | "
-                    f"Max: -- °C | Avg: -- °C\n"
-                    f"Napomenuti Filip: {napomenutiF}\n"
-                    f"Napomenuti Vitek: {napomenutiV}\n"
-                )
-            else:
-                self.update(
-                    f"[bold cyan]Statistics[/bold cyan]\n\n"
-                    f"Vbat: Min: {self.stats['Vbat']['min']:.2f}V | "
-                    f"Max: {self.stats['Vbat']['max']:.2f}V | Avg: -- V\n"
-                    f"Iout: Min: {self.stats['Iout']['min']:.2f}A | "
-                    f"Max: {self.stats['Iout']['max']:.2f}A | Avg: -- A\n"
-                    f"Pout: Min: {self.stats['Tfc']['min']}W | "
-                    f"Max: {self.stats['Pout']['max']}W | Avg:-- W\n"
-                    f"Vfc:  Min: {self.stats['Vfc']['min']:.2f}V | "
-                    f"Max: {self.stats['Vfc']['max']:.2f}V | Avg: -- V\n"
-                    f"Pfc:  Min: {self.stats['Tfc']['min']}W | "
-                    f"Max: {self.stats['Pfc']['max']}W | Avg: -- W\n"
-                    f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
-                    f"Max: {self.stats['Tfc']['max']}°C | Avg: -- °C\n"
-                    f"Napomenuti Filip: {napomenutiF}\n"
-                    f"Napomenuti Vitek: {napomenutiV}\n"
-                )
-        else:
-            numeric_keys = ["Vbat", "Iout", "Pout", "Vfc","Pfc", "Tfc"]
-            for key in numeric_keys:
+        if data is not None:
+            for key in NUMERIC_KEYS:
                 if key in data:
-                    value = float(data[key])
+                    try:
+                        value = float(data[key])
+                    except (ValueError, TypeError):
+                        continue
                     stat = self.stats[key]
                     stat["min"] = min(stat["min"], value)
                     stat["max"] = max(stat["max"], value)
                     stat["count"] += 1
                     stat["sum"] += value
                     stat["avg"] = stat["sum"] / stat["count"]
-            
-            self.update(
-                f"[bold cyan]Statistics[/bold cyan]\n\n"
-                f"Vbat: Min: {self.stats['Vbat']['min']:.2f}V | "
-                f"Max: {self.stats['Vbat']['max']:.2f}V | Avg: {self.stats['Vbat']['avg']:.2f}V\n"
-                f"Iout: Min: {self.stats['Iout']['min']:.2f}A | "
-                f"Max: {self.stats['Iout']['max']:.2f}A | Avg: {self.stats['Iout']['avg']:.2f}A\n"
-                f"Pout: Min: {self.stats['Tfc']['min']}W | "
-                f"Max: {self.stats['Pout']['max']}W | Avg: {self.stats['Pout']['avg']:.1f}W\n"
-                f"Vfc:  Min: {self.stats['Vfc']['min']:.2f}V | "
-                f"Max: {self.stats['Vfc']['max']:.2f}V | Avg: {self.stats['Vfc']['avg']:.2f}V\n"
-                f"Pfc:  Min: {self.stats['Tfc']['min']}W | "
-                f"Max: {self.stats['Pfc']['max']}W | Avg: {self.stats['Pfc']['avg']:.1f}W\n"
-                f"Tfc:  Min: {self.stats['Tfc']['min']}°C | "
-                f"Max: {self.stats['Tfc']['max']}°C | Avg: {self.stats['Tfc']['avg']:.1f}°C\n"
-                f"Napomenuti Filip: {napomenutiF}\n"
-                f"Napomenuti Vitek: {napomenutiV}\n"
+
+        def row(label, key, suffix):
+            return (
+                f"{label:<5} Min: {self._fmt(key, 'min', suffix)} | "
+                f"Max: {self._fmt(key, 'max', suffix)} | "
+                f"Avg: {self._fmt(key, 'avg', suffix)}"
             )
-    
+
+        self.update(
+            f"{row('Vbat', 'Vbat', 'V')}\n"
+            f"{row('Iout', 'Iout', 'A')}\n"
+            f"{row('Pout', 'Pout', 'W')}\n"
+            f"{row('Vfc', 'Vfc', 'V')}\n"
+            f"{row('Pfc', 'Pfc', 'W')}\n"
+            f"{row('Tfc', 'Tfc', '°C')}\n"
+            f"\n"
+            f"Napomenuti Filip: {napomenutiF if napomenutiF is not None else 0}\n"
+            f"Napomenuti Vitek: {napomenutiV if napomenutiV is not None else 0}\n"
+        )
+
     def reset_stats(self):
         for stat in self.stats.values():
-            stat["min"] = float('inf')
-            stat["max"] = float('-inf')
-            stat["avg"] = 0
-            stat["count"] = 0
-            stat["sum"] = 0
+            stat.update({"min": float("inf"), "max": float("-inf"), "avg": 0, "count": 0, "sum": 0})

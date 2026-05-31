@@ -1,7 +1,0 @@
-psutil
-datetime
-textual
-textual-dev
-pyserial
-pandas
-matplotlib
