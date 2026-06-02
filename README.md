@@ -24,6 +24,13 @@ pip install -r requirements.txt
 ```
 python telemetry.py
 ```
+- Or run the redesigned UI — a launcher lets you pick one of two
+  terminal-faithful dashboard designs (A · Refined Classic, B · Hero Grid),
+  both sharing the same backend:
+```
+python telemetry_redesign.py
+```
+  Skip the launcher with `python telemetry_redesign.py --variant b` (a/b).
 - To update to the latest version
 ```
 git pull upstream main

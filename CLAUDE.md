@@ -10,8 +10,14 @@ A Textual-based terminal UI (TUI) that displays real-time telemetry from a hydro
 
 ```powershell
 pip install -r requirements.txt
-python telemetry.py            # single entry point
+python telemetry.py            # main entry point
+python telemetry_redesign.py   # redesigned UI launcher (pick a variant), same backend
+python telemetry_redesign.py --variant b   # skip launcher (a|b|c)
 ```
+
+`telemetry_redesign.py` is a self-contained restyle from a Claude Design handoff: a custom Textual `Theme` (`H2_THEME`), `Digits`-based hero tiles, block-character sparklines (`spark()`), and a `RaceModel` (pure race math, no UI). It reuses `bin/datasource.py`, the modal screens, and the config loaders — only the presentation differs from `telemetry.py`.
+
+Architecture: `BaseTelemetryApp` holds all backend/chrome (data ingest, race, log, Docs/Config tabs, connection) and defines two abstract paint hooks. Two subclasses supply only layout + painting: `RefinedClassicApp` (A) and `HeroGridApp` (B). `LauncherApp` (an `OptionList` menu) returns the chosen variant id, and `main()` then runs that app. To add a variant, subclass `BaseTelemetryApp`, implement `compose_dashboard()` / `paint()` / `paint_race()`, and register it in `VARIANTS` / `VARIANT_INFO`.
 
 There is no test suite, linter, or build step. The `test*.py` files at the repo root are throwaway scratch experiments, not tests — ignore them unless asked.
 
