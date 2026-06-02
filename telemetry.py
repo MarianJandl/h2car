@@ -1,7 +1,7 @@
 from datetime import datetime
 import subprocess
 from textual.app import App, ComposeResult
-from textual.containers import Grid, Vertical, VerticalScroll
+from textual.containers import Grid, Vertical
 from textual.widgets import Header, Footer, Static, RichLog, TabbedContent, TabPane, MarkdownViewer, DirectoryTree, ProgressBar, TextArea
 from textual.binding import Binding
 import os
@@ -384,21 +384,29 @@ class DashboardLogApp(App):
             grid-columns: 3fr 7fr;
         }
 
-        /* Scrollable stack of panels on the left, so adding borders never
-           clips content on short terminals. */
+        /* Left column of panels. A plain Vertical (not a scroll) so the stack
+           fits exactly to the bottom of the window with no scrollbar. */
         #left_panels {
             height: 1fr;
             width: 100%;
-            scrollbar-size-vertical: 1;
         }
 
-        Dashboard, StatsDashboard, RaceTracker {
+        Dashboard, StatsDashboard {
             padding: 0 1;
             height: auto;
             border: round $primary;
             border-title-color: $accent;
             border-title-align: left;
             margin-bottom: 1;
+        }
+
+        /* Race tracker takes the remaining space so it reaches the bottom. */
+        RaceTracker {
+            padding: 0 1;
+            height: 1fr;
+            border: round $primary;
+            border-title-color: $accent;
+            border-title-align: left;
         }
 
         #data_log {
@@ -415,19 +423,9 @@ class DashboardLogApp(App):
         ErrorStatus {
             padding: 0 1;
             height: auto;
-            max-height: 7;
             border: round $warning;
             border-title-color: $accent;
             margin-bottom: 1;
-        }
-
-        #error_scroll {
-            height: auto;
-            max-height: 5;
-        }
-
-        #error_header {
-            padding: 0 0 1 0;
         }
 
         ResourceMonitor {
@@ -497,26 +495,25 @@ class DashboardLogApp(App):
         with TabbedContent():
             with TabPane("Dashboard & Log", id="tab_dashboard"):
                 with Grid(id="main_grid"):
-                    with Vertical():
-                        with VerticalScroll(id="left_panels"):
-                            self.conn_status = ConnectionStatus()
-                            yield self.conn_status
+                    with Vertical(id="left_panels"):
+                        self.conn_status = ConnectionStatus()
+                        yield self.conn_status
 
-                            self.err_status = ErrorStatus()
-                            self.err_status.border_title = "Status"
-                            yield self.err_status
+                        self.err_status = ErrorStatus()
+                        self.err_status.border_title = "Status"
+                        yield self.err_status
 
-                            self.dashboard = Dashboard()
-                            self.dashboard.border_title = "Dashboard"
-                            yield self.dashboard
+                        self.dashboard = Dashboard()
+                        self.dashboard.border_title = "Dashboard"
+                        yield self.dashboard
 
-                            self.stats = StatsDashboard()
-                            self.stats.border_title = "Statistics"
-                            yield self.stats
+                        self.stats = StatsDashboard()
+                        self.stats.border_title = "Statistics"
+                        yield self.stats
 
-                            self.race_tracker = RaceTracker()
-                            self.race_tracker.border_title = "Race Tracker"
-                            yield self.race_tracker
+                        self.race_tracker = RaceTracker()
+                        self.race_tracker.border_title = "Race Tracker"
+                        yield self.race_tracker
 
                         self.resource_monitor = ResourceMonitor()
                         yield self.resource_monitor
