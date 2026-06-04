@@ -11,6 +11,10 @@ backend; a launcher lets you pick which to run:
     A · Refined Classic   — left rail of panels beside the log (lowest-risk port)
     B · Hero Grid         — Pout/Pfc/Vbat/Tfc as big hero tiles (recommended)
 
+Both variants share a Statistics tab showing min/max/avg for all six channels
+(Vbat, Iout, Pout, Vfc, Pfc, Tfc) over a selectable time window — all time,
+last hour, last 5 minutes, or a custom number of minutes.
+
 The original `telemetry.py` is left untouched. Backend (in-process data sources,
 config loaders, modal screens) is reused, so behaviour matches the real app;
 only the presentation differs.
@@ -34,8 +38,9 @@ from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.theme import Theme
 from textual.widgets import (
-    Digits, DirectoryTree, Footer, Header, MarkdownViewer, OptionList,
-    ProgressBar, RichLog, Static, TabbedContent, TabPane, TextArea,
+    Digits, DirectoryTree, Footer, Header, Input, MarkdownViewer, OptionList,
+    ProgressBar, RadioButton, RadioSet, RichLog, Static, TabbedContent, TabPane,
+    TextArea,
 )
 from textual.widgets.option_list import Option
 
@@ -85,6 +90,9 @@ ALL_KEYS = list(METRICS.keys())
 
 SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
 HIST = 64
+# Timestamped samples kept per channel for windowed stats (~2h at 1 Hz).
+# "All time" uses O(1) running aggregates, so it stays accurate beyond this.
+SAMPLE_CAP = 7200
 
 
 def spark(values, width):
@@ -135,7 +143,8 @@ def load_race_config():
 # ============================================================
 class Series:
     def __init__(self):
-        self.hist = deque(maxlen=HIST)
+        self.hist = deque(maxlen=HIST)          # recent values, for sparklines
+        self.samples = deque(maxlen=SAMPLE_CAP)  # (timestamp, value), for windowed stats
         self.v = None
         self.min = float("inf")
         self.max = float("-inf")
@@ -145,6 +154,7 @@ class Series:
     def push(self, value):
         self.v = value
         self.hist.append(value)
+        self.samples.append((time.time(), value))
         self.min = min(self.min, value)
         self.max = max(self.max, value)
         self.sum += value
@@ -153,6 +163,19 @@ class Series:
     @property
     def avg(self):
         return self.sum / self.n if self.n else None
+
+    def window_stats(self, window):
+        """(min, max, avg, count) over the last `window` seconds, or None if no
+        samples. `window=None` means all time (uses O(1) running aggregates)."""
+        if window is None:
+            if self.n == 0:
+                return None
+            return self.min, self.max, self.sum / self.n, self.n
+        cutoff = time.time() - window
+        vals = [v for t, v in self.samples if t >= cutoff]
+        if not vals:
+            return None
+        return min(vals), max(vals), sum(vals) / len(vals), len(vals)
 
 
 class RaceModel:
@@ -413,6 +436,18 @@ RichLog { border: round #232c38; background: #080b10; padding: 0 1; }
 DirectoryTree, MarkdownViewer, TextArea {
     height: 100%; border: round #232c38; border-title-color: $secondary; background: $surface;
 }
+
+#stats_grid { grid-size: 2 1; grid-columns: 34 1fr; padding: 1; }
+#stats_controls { height: 100%; }
+#win_set {
+    width: 100%; height: auto;
+    border: round #232c38; background: $surface; border-title-color: $secondary;
+}
+#custom_min { margin-top: 1; border: round #232c38; background: $surface; }
+#stats_table {
+    height: 100%; padding: 1 2;
+    border: round #232c38; background: $surface; border-title-color: $secondary;
+}
 """
 
 
@@ -446,6 +481,7 @@ class BaseTelemetryApp(App):
 
         self.series = {k: Series() for k in ALL_KEYS}
         self.tiles = {}
+        self.stats_window = None  # None = all time; else seconds
         self.tim = 0
         self.last_di = "0"
         self.nodata = 0
@@ -481,6 +517,23 @@ class BaseTelemetryApp(App):
         with TabbedContent(initial="tab_dash"):
             with TabPane("Dashboard & Log", id="tab_dash"):
                 yield from self.compose_dashboard()
+            with TabPane("Statistics", id="tab_stats"):
+                with Grid(id="stats_grid"):
+                    with Vertical(id="stats_controls"):
+                        rs = RadioSet(
+                            RadioButton("All time", value=True, id="win_all"),
+                            RadioButton("Last hour", id="win_hour"),
+                            RadioButton("Last 5 min", id="win_5m"),
+                            RadioButton("Custom (min)", id="win_custom"),
+                            id="win_set",
+                        )
+                        rs.border_title = "Window"
+                        yield rs
+                        self.custom_min = Input(placeholder="custom minutes", id="custom_min", type="number")
+                        yield self.custom_min
+                    self.stats_table = Static("", id="stats_table")
+                    self.stats_table.border_title = "Statistics — min · max · avg"
+                    yield self.stats_table
             with TabPane("Docs", id="tab_docs"):
                 with Grid(id="docs_grid"):
                     self.doc_tree = FilteredDirectoryTreeDocs("./", id="doc_tree")
@@ -512,12 +565,78 @@ class BaseTelemetryApp(App):
         self.paint()
         self.paint_race()
 
-    # ---------- paint hooks (overridden per variant) ----------
+    # ---------- paint hooks ----------
     def paint(self):
+        self.paint_dashboard()
+        self.paint_stats()
+
+    def paint_dashboard(self):  # overridden per variant
         raise NotImplementedError
 
-    def paint_race(self):
+    def paint_race(self):  # overridden per variant
         raise NotImplementedError
+
+    # ---------- statistics tab ----------
+    def _window_label(self):
+        w = self.stats_window
+        if w is None:
+            return "all time"
+        if w == 3600:
+            return "last hour"
+        if w == 300:
+            return "last 5 minutes"
+        return f"last {w / 60:g} min"
+
+    def _custom_window(self):
+        try:
+            mins = float(self.custom_min.value)
+            if mins > 0:
+                return mins * 60
+        except (ValueError, AttributeError):
+            pass
+        return 300
+
+    def paint_stats(self):
+        if not hasattr(self, "stats_table"):
+            return
+        header = f"[b]Statistics[/b]  [dim]· {self._window_label()}[/dim]\n\n"
+        cols = f"[dim]{'Channel':<14}{'Min':>10}{'Max':>10}{'Avg':>10}[/dim]\n"
+        rows = []
+        for key in TABLE_KEYS:
+            m = METRICS[key]
+            chan = f"[{m['color']}]{key:<5}[/][dim]{m['unit']:<9}[/dim]"
+            st = self.series[key].window_stats(self.stats_window)
+            if st is None:
+                rows.append(chan + f"{'--':>10}{'--':>10}{'--':>10}")
+            else:
+                mn, mx, avg, _ = st
+                d = m["dec"]
+                rows.append(chan + f"{mn:>10.{d}f}{mx:>10.{d}f}{avg:>10.{d}f}")
+        self.stats_table.update(header + cols + "\n".join(rows))
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.radio_set.id != "win_set":
+            return
+        rid = event.pressed.id
+        if rid == "win_hour":
+            self.stats_window = 3600
+        elif rid == "win_5m":
+            self.stats_window = 300
+        elif rid == "win_custom":
+            self.stats_window = self._custom_window()
+        else:
+            self.stats_window = None
+        self.paint_stats()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "custom_min":
+            return
+        custom = self.query_one("#win_custom", RadioButton)
+        if not custom.value:
+            custom.value = True  # selecting it fires on_radio_set_changed
+        else:
+            self.stats_window = self._custom_window()
+            self.paint_stats()
 
     # ---------- helpers for variants ----------
     def fmt(self, key, value):
@@ -799,7 +918,7 @@ class HeroGridApp(BaseTelemetryApp):
                 yield self.vfc
                 yield self.res
 
-    def paint(self):
+    def paint_dashboard(self):
         self.update_alert()
         for key, tile in self.tiles.items():
             tile.refresh_metric(self.series[key])
@@ -851,7 +970,7 @@ class RefinedClassicApp(BaseTelemetryApp):
                 self.res = Static("", classes="panel res")
                 yield self.res
 
-    def paint(self):
+    def paint_dashboard(self):
         self.update_alert()
         self._paint_conn()
         lines = []
@@ -874,16 +993,17 @@ class RefinedClassicApp(BaseTelemetryApp):
             self.conn_line.update(f"[{PALETTE['red']}]○[/] Disconnected")
 
     def _stats_text(self):
-        rows = []
-        for key, unit in [("Vbat", "V"), ("Pout", "W"), ("Pfc", "W"), ("Tfc", "°C")]:
-            s = self.series[key]
-            if s.n:
-                rows.append(
-                    f"[dim]{key:<5}[/dim] {self.fmt(key, s.min)} · {self.fmt(key, s.max)} · "
-                    f"[b]{self.fmt(key, s.avg)}[/b] [dim]{unit}[/dim]"
-                )
+        rows = [f"[dim]window: {self._window_label()}[/dim]"]
+        for key in TABLE_KEYS:
+            m = METRICS[key]
+            st = self.series[key].window_stats(self.stats_window)
+            chan = f"[{m['color']}]{key:<5}[/][dim]{m['unit']:<4}[/dim]"
+            if st is None:
+                rows.append(f"{chan} [dim]-- · -- · --[/dim]")
             else:
-                rows.append(f"[dim]{key:<5} -- · -- · -- {unit}[/dim]")
+                mn, mx, avg, n = st
+                d = m["dec"]
+                rows.append(f"{chan} {mn:.{d}f} · {mx:.{d}f} · [b]{avg:.{d}f}[/b]")
         return "\n".join(rows)
 
     def paint_race(self):
@@ -927,7 +1047,7 @@ class LauncherApp(App):
         yield Header()
         with Vertical(id="wrap"):
             yield Static("h2car telemetry — choose a dashboard design", id="title")
-            yield Static("Three terminal-faithful directions. Same live backend.", id="subtitle")
+            yield Static("Two terminal-faithful directions. Same live backend.", id="subtitle")
             opts = []
             for vid, name, desc in VARIANT_INFO:
                 t = Text()

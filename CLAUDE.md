@@ -17,7 +17,9 @@ python telemetry_redesign.py --variant b   # skip launcher (a|b|c)
 
 `telemetry_redesign.py` is a self-contained restyle from a Claude Design handoff: a custom Textual `Theme` (`H2_THEME`), `Digits`-based hero tiles, block-character sparklines (`spark()`), and a `RaceModel` (pure race math, no UI). It reuses `bin/datasource.py`, the modal screens, and the config loaders — only the presentation differs from `telemetry.py`.
 
-Architecture: `BaseTelemetryApp` holds all backend/chrome (data ingest, race, log, Docs/Config tabs, connection) and defines two abstract paint hooks. Two subclasses supply only layout + painting: `RefinedClassicApp` (A) and `HeroGridApp` (B). `LauncherApp` (an `OptionList` menu) returns the chosen variant id, and `main()` then runs that app. To add a variant, subclass `BaseTelemetryApp`, implement `compose_dashboard()` / `paint()` / `paint_race()`, and register it in `VARIANTS` / `VARIANT_INFO`.
+Architecture: `BaseTelemetryApp` holds all backend/chrome (data ingest, race, log, a shared Statistics tab, Docs/Config tabs, connection). It defines `paint_dashboard()` / `paint_race()` as per-variant hooks; the base `paint()` calls `paint_dashboard()` then `paint_stats()`. Two subclasses supply only layout + dashboard painting: `RefinedClassicApp` (A) and `HeroGridApp` (B). `LauncherApp` (an `OptionList` menu) returns the chosen variant id, and `main()` then runs that app. To add a variant, subclass `BaseTelemetryApp`, implement `compose_dashboard()` / `paint_dashboard()` / `paint_race()`, and register it in `VARIANTS` / `VARIANT_INFO`.
+
+The Statistics tab shows min/max/avg for all six channels over a selectable window (all time / last hour / last 5 min / custom). `Series` keeps O(1) running aggregates for all-time plus a bounded timestamped `samples` deque (`SAMPLE_CAP` ≈ 2h) for windowed queries via `Series.window_stats(window)`.
 
 There is no test suite, linter, or build step. The `test*.py` files at the repo root are throwaway scratch experiments, not tests — ignore them unless asked.
 
